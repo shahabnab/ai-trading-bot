@@ -41,11 +41,14 @@ class RiskManager:
                 f"Model confidence {proposal.confidence:.3f} is below the configured minimum {self.min_confidence:.3f}.",
             )
 
-        max_notional = proposal.portfolio_value_usdt * self.max_order_fraction
-        if proposal.notional_usdt > max_notional:
-            return RiskDecision(
-                False,
-                f"Order notional exceeds the paper risk limit of {self.max_order_fraction:.1%} of portfolio value.",
-            )
+        # Position-size limits apply to entries. Exits must not be blocked merely
+        # because an existing position has grown beyond the entry-size limit.
+        if side == "BUY":
+            max_notional = proposal.portfolio_value_usdt * self.max_order_fraction
+            if proposal.notional_usdt > max_notional:
+                return RiskDecision(
+                    False,
+                    f"Order notional exceeds the paper risk limit of {self.max_order_fraction:.1%} of portfolio value.",
+                )
 
         return RiskDecision(True, "Approved by paper risk rules.")
