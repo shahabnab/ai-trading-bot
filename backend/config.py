@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     Live execution is intentionally rejected during the current project phase.
     CoinEx credentials are optional and are used only for read-only account data.
     Paper trading uses public market data and a local SQLite database.
+    ML artifacts, checkpoints, and run logs use portable filesystem-backed stores
+    so training/inference can resume on another machine after copying/syncing them.
     """
 
     model_config = SettingsConfigDict(
@@ -37,6 +39,10 @@ class Settings(BaseSettings):
     paper_min_confidence: float = Field(default=0.55, alias="PAPER_MIN_CONFIDENCE")
     paper_max_order_fraction: Decimal = Field(default=Decimal("0.10"), alias="PAPER_MAX_ORDER_FRACTION")
     paper_db_path: str = Field(default="data/paper_trading.sqlite3", alias="PAPER_DB_PATH")
+
+    model_registry_path: str = Field(default="state/model_registry", alias="MODEL_REGISTRY_PATH")
+    ml_runs_path: str = Field(default="logs/ml", alias="ML_RUNS_PATH")
+    ml_checkpoints_path: str = Field(default="models/checkpoints", alias="ML_CHECKPOINTS_PATH")
 
     @property
     def coinex_configured(self) -> bool:
