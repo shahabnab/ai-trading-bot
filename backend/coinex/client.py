@@ -12,7 +12,7 @@ COINEX_BASE_URL = "https://api.coinex.com/v2"
 
 
 class CoinExAPIError(RuntimeError):
-    """Raised when CoinEx returns an unsuccessful response."""
+    """Raised when CoinEx returns an unsuccessful or malformed response."""
 
 
 @dataclass(frozen=True)
@@ -89,13 +89,26 @@ class CoinExClient:
                 f"CoinEx API error {payload.get('code')}: {payload.get('message', 'unknown error')}"
             )
 
+        raw_data = payload.get("data")
+        if raw_data is None:
+            return []
+        if not isinstance(raw_data, list):
+            raise CoinExAPIError("CoinEx returned an unexpected balance payload")
+
         balances: list[SpotBalance] = []
-        for item in payload.get("data", []):
-            balance = SpotBalance(
-                ccy=str(item["ccy"]),
-                available=Decimal(str(item["available"])),
-                frozen=Decimal(str(item["frozen"])),
-            )
+        for item in raw_data:
+            if not isinstance(item, dict):
+                raise CoinExAPIError("CoinEx returned an invalid balance entry")
+
+            try:
+                balance = SpotBalance(
+                    ccy=str(item["ccy"]),
+                    available=Decimal(str(item["available"])),
+                    frozen=Decimal(str(item["frozen"])),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise CoinExAPIError("CoinEx returned a malformed balance entry") from exc
+
             if balance.total != 0:
                 balances.append(balance)
 
