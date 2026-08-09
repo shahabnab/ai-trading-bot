@@ -2,7 +2,7 @@
 
 Personal AI-assisted trading platform for research, backtesting, paper trading, and eventually tightly controlled live execution.
 
-> **Current status:** v0.1 foundation with dashboard work in progress. Paper trading only. No live-order execution is enabled.
+> **Current status:** v0.3 paper-trading engine. CoinEx is used for read-only market data. All orders, positions, balances, fees, slippage and P/L are simulated locally. No live-order execution exists.
 
 ## Goals
 
@@ -10,53 +10,48 @@ Personal AI-assisted trading platform for research, backtesting, paper trading, 
 2. Engineer transparent features and establish non-ML baselines.
 3. Backtest with realistic transaction costs and no look-ahead leakage.
 4. Add ML models only after baselines are trustworthy.
-5. Add paper-trading broker integration.
+5. Evaluate model signals through a persistent paper-trading engine.
 6. Add AI-assisted research/news analysis as a separate component.
 7. Consider limited live trading only after out-of-sample and paper-trading validation.
 
-## Architecture
+## Current architecture
 
 ```text
-Browser dashboard
-       |
-       v
-Next.js frontend ---> FastAPI backend
-                          |
-                          v
-                   Market / Broker APIs
-                          |
-                          v
-                   Data ingestion ---> Database
-                          |
-                          v
-                   Feature engineering
-                          |
-                          +----> Baseline / ML models
-                          |              |
-                          v              v
-                   Strategy engine ---> Trade proposal
-                                          |
-                                          v
-                                     Risk manager
-                                          |
-                                          v
-                                   Execution adapter
-                                          |
-                                          v
-                                     PAPER broker
+CoinEx public market data
+          |
+          v
+      Market adapter
+          |
+          v
+ Model / strategy signal
+          |
+          v
+      Risk manager
+          |
+          v
+      Paper broker
+          |
+          +----> SQLite trade + decision log
+          |
+          v
+ Paper portfolio / P&L
+          |
+          v
+    Next.js dashboard
 ```
 
-The model or LLM must never bypass the risk manager.
+The model or LLM must never bypass the risk manager. The paper broker has no CoinEx order-placement capability.
 
-## Initial stack
+## Stack
 
 - Conda environment (`ai-trading-bot`)
 - Python 3.11
 - FastAPI backend
 - Pydantic settings
+- SQLite paper-trading store
 - pytest
 - Next.js + React + TypeScript dashboard
-- PostgreSQL planned for market/trading data
+- PostgreSQL remains a later option for larger historical datasets
 
 ## Create the Conda environment
 
@@ -67,40 +62,116 @@ conda env create -f environment.yml
 conda activate ai-trading-bot
 ```
 
-If the environment already exists and `environment.yml` changes later, update it with:
+If the environment already exists:
 
 ```bash
 conda env update -f environment.yml --prune
 conda activate ai-trading-bot
 ```
 
+## Configure paper trading
+
+Copy `.env.example` to `.env`. The default paper settings are:
+
+```env
+TRADING_MODE=paper
+PAPER_INITIAL_BALANCE_USDT=10000
+PAPER_FEE_RATE=0.002
+PAPER_SLIPPAGE_BPS=5
+PAPER_MIN_CONFIDENCE=0.55
+PAPER_MAX_ORDER_FRACTION=0.10
+PAPER_DB_PATH=data/paper_trading.sqlite3
+```
+
+CoinEx API credentials are optional for paper trading because public ticker and candle endpoints do not need them. If supplied, the credentials are used only by the existing read-only balance diagnostics.
+
+Never commit real credentials.
+
 ## Run backend locally
 
-With the Conda environment activated:
-
-### Windows
+From the repository root with the Conda environment activated:
 
 ```bash
-copy .env.example .env
 uvicorn backend.main:app --reload
 ```
 
-### Linux/macOS
+Useful endpoints:
 
-```bash
-cp .env.example .env
-uvicorn backend.main:app --reload
+```text
+GET  /health
+GET  /api/market/BTCUSDT
+GET  /api/market/BTCUSDT/klines?period=5min&limit=100
+GET  /api/paper/portfolio
+GET  /api/paper/positions
+GET  /api/paper/trades
+GET  /api/paper/decisions
+GET  /api/paper/performance
+POST /api/paper/signal
 ```
 
-Open `http://127.0.0.1:8000/health`.
+### Example paper BUY signal
 
-Run backend tests:
+PowerShell:
+
+```powershell
+$body = @{
+  symbol = "BTCUSDT"
+  signal = "BUY"
+  confidence = 0.82
+  notional_usdt = 500
+  model_version = "baseline-v1"
+  strategy_version = "signal-test-v1"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/paper/signal" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+### Example HOLD signal
+
+```powershell
+$body = @{
+  symbol = "BTCUSDT"
+  signal = "HOLD"
+  confidence = 0.63
+  model_version = "baseline-v1"
+  strategy_version = "signal-test-v1"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/paper/signal" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+### Example full-position SELL signal
+
+Omit `quantity` to close the full paper position:
+
+```powershell
+$body = @{
+  symbol = "BTCUSDT"
+  signal = "SELL"
+  confidence = 0.79
+  model_version = "baseline-v1"
+  strategy_version = "signal-test-v1"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/api/paper/signal" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+Every signal is logged, including HOLD and rejected decisions. Filled paper trades also record market price, simulated execution price, fee, quantity, model version, strategy version and realized P/L.
+
+Run tests:
 
 ```bash
 pytest
 ```
-
-`requirements.txt` is retained as a lightweight pip-compatible dependency list, but Conda users should use `environment.yml` as the primary environment definition.
 
 ## Run dashboard locally
 
@@ -113,7 +184,7 @@ cd frontend
 npm install
 ```
 
-Then create the frontend local environment file:
+Then create the frontend local environment file and run the dashboard:
 
 ### Windows
 
@@ -131,7 +202,7 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The dashboard reads the FastAPI `/health` endpoint and clearly displays whether the backend is reachable and which trading mode is active.
+The dashboard displays the virtual portfolio, total P/L, simulated positions, live CoinEx watchlist prices and recent model decisions.
 
 ## Shared AI workflow
 
