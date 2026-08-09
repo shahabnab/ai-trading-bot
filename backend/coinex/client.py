@@ -66,7 +66,7 @@ class CoinExClient:
             "Content-Type": "application/json",
         }
 
-    async def get_spot_balances(self) -> list[SpotBalance]:
+    async def _get_spot_balance_response(self) -> tuple[int, dict[str, Any]]:
         endpoint = "/assets/spot/balance"
         request_path = f"/v2{endpoint}"
         timestamp_ms = int(time.time() * 1000)
@@ -75,14 +75,35 @@ class CoinExClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.get(f"{self.base_url}{endpoint}", headers=headers)
-                response.raise_for_status()
             except httpx.HTTPError as exc:
                 raise CoinExAPIError(f"CoinEx HTTP request failed: {exc}") from exc
 
         try:
-            payload: dict[str, Any] = response.json()
+            payload = response.json()
         except ValueError as exc:
             raise CoinExAPIError("CoinEx returned a non-JSON response") from exc
+
+        if not isinstance(payload, dict):
+            raise CoinExAPIError("CoinEx returned an unexpected JSON payload")
+
+        return response.status_code, payload
+
+    async def get_spot_balance_debug(self) -> dict[str, Any]:
+        status_code, payload = await self._get_spot_balance_response()
+        raw_data = payload.get("data")
+        return {
+            "http_status": status_code,
+            "code": payload.get("code"),
+            "message": payload.get("message"),
+            "data_type": "null" if raw_data is None else type(raw_data).__name__,
+            "data_count": len(raw_data) if isinstance(raw_data, list) else None,
+        }
+
+    async def get_spot_balances(self) -> list[SpotBalance]:
+        status_code, payload = await self._get_spot_balance_response()
+
+        if status_code >= 400:
+            raise CoinExAPIError(f"CoinEx HTTP error {status_code}")
 
         if payload.get("code") != 0:
             raise CoinExAPIError(
