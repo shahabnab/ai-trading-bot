@@ -53,6 +53,32 @@ export type PaperDecision = {
   market_price: string | null;
 };
 
+export type PaperTrade = {
+  id: number;
+  created_at: string;
+  symbol: string;
+  side: string;
+  quantity: string;
+  market_price: string;
+  execution_price: string;
+  gross_value_usdt: string;
+  fee_usdt: string;
+  realized_pnl_usdt: string;
+  model_version: string;
+  strategy_version: string;
+  confidence: number | null;
+};
+
+export type PaperPerformance = {
+  trade_count: number;
+  decision_count: number;
+  closed_trades: number;
+  winning_trades: number;
+  win_rate: number | null;
+  total_fees_usdt: string;
+  realized_pnl_usdt: string;
+};
+
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
 
 async function safeGet<T>(path: string): Promise<T | null> {
@@ -80,4 +106,13 @@ export function getPaperPortfolio(): Promise<PaperPortfolio | null> {
 export async function getPaperDecisions(limit = 8): Promise<PaperDecision[]> {
   const result = await safeGet<{ decisions: PaperDecision[] }>(`/api/paper/decisions?limit=${limit}`);
   return result?.decisions ?? [];
+}
+
+export async function getPaperTrades(limit = 8): Promise<PaperTrade[]> {
+  const result = await safeGet<{ trades: PaperTrade[] }>(`/api/paper/trades?limit=${limit}`);
+  return result?.trades ?? [];
+}
+
+export function getPaperPerformance(): Promise<PaperPerformance | null> {
+  return safeGet<PaperPerformance>("/api/paper/performance");
 }

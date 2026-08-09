@@ -14,30 +14,72 @@ h2 { margin: 2px 0 0; font-size: 1.15rem; }
 .eyebrow { margin: 0; color: #7890a4; font-size: .72rem; font-weight: 700; letter-spacing: .16em; }
 .status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: #a9b8c5; font-size: .88rem; }
 .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #fb7185; box-shadow: 0 0 14px #fb718577; }
-.status-dot.online { background: #34d399; box-shadow: 0 0 14px #34d39977; }
+.status-dot.online { background: #34d399; box-shadow: 0 0 14px #34d39977; animation: pulse 2.4s ease-in-out infinite; }
 .mode-badge { margin-left: 8px; padding: 8px 11px; border: 1px solid #fbbf2455; border-radius: 999px; background: #fbbf2414; color: #fcd34d; font-weight: 800; letter-spacing: .07em; }
+.refreshed-at { color: #55697a; font-size: .78rem; }
 .warning-card { margin-bottom: 18px; padding: 14px 16px; border: 1px solid #fbbf2433; border-radius: 14px; background: #fbbf240a; color: #d9e2ea; }
 .warning-card strong { color: #fcd34d; }
-.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
 .metric-card, .panel { border: 1px solid #ffffff12; background: #0c1721cc; box-shadow: 0 18px 45px #00000028; }
 .metric-card { min-height: 124px; border-radius: 17px; padding: 18px; display: flex; flex-direction: column; gap: 6px; }
-.metric-card span, .metric-card small { color: #8297a8; }
-.metric-card strong { font-size: 1.55rem; margin-top: 4px; }
-.dashboard-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; }
+.metric-card span, .metric-card small { color: #8297a8; font-size: .82rem; }
+.metric-card strong { font-size: 1.4rem; margin-top: 4px; }
+.dashboard-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items: start; }
+.grid-column { display: grid; gap: 14px; }
 .panel { border-radius: 18px; padding: 20px; min-height: 250px; }
-.large-panel { min-height: 390px; }
+.large-panel { min-height: 260px; }
 .panel-heading { display: flex; justify-content: space-between; align-items: start; gap: 14px; margin-bottom: 20px; }
-.placeholder-chip { padding: 7px 10px; border-radius: 999px; background: #ffffff0a; color: #8297a8; font-size: .75rem; }
-.chart-placeholder { height: 290px; border-radius: 14px; border: 1px dashed #ffffff18; display: grid; place-items: center; position: relative; overflow: hidden; color: #6f8495; }
-.chart-placeholder p { z-index: 1; background: #0c1721e6; padding: 8px 12px; border-radius: 8px; }
-.chart-line { position: absolute; width: 115%; height: 80px; border-top: 2px solid #38bdf855; transform: rotate(-5deg) translateY(25px); }
+.placeholder-chip { padding: 7px 10px; border-radius: 999px; background: #ffffff0a; color: #8297a8; font-size: .75rem; white-space: nowrap; }
+.inline-chip { margin-left: 6px; padding: 2px 6px; border-radius: 999px; background: #ffffff0c; color: #8297a8; font-size: .68rem; vertical-align: middle; }
 .watchlist { display: grid; gap: 3px; }
 .watch-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #ffffff0a; }
-.watch-row span { color: #718596; font-size: .82rem; }
+.watch-row > span:last-child { color: #718596; font-size: .82rem; }
+.watch-quote { display: flex; align-items: center; gap: 8px; }
+.change-pill { padding: 2px 7px; border-radius: 999px; font-size: .72rem; font-weight: 700; }
+.change-pill.pos { color: #34d399; background: #34d39916; }
+.change-pill.neg { color: #fb7185; background: #fb718516; }
 .empty-state { color: #8195a5; line-height: 1.6; border: 1px dashed #ffffff12; border-radius: 13px; padding: 18px; }
 .activity-item { display: grid; grid-template-columns: 70px 1fr; gap: 14px; padding: 12px 0; border-bottom: 1px solid #ffffff0a; }
+.activity-item:last-child { border-bottom: none; padding-bottom: 0; }
 .activity-item p { margin: 0; color: #aebbc6; }
 .activity-time { color: #5f7586; font-size: .8rem; }
+
+.pos { color: #34d399; }
+.neg { color: #fb7185; }
+.neutral { color: #8297a8; }
+.muted { color: #718596; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+thead th { text-align: left; padding: 0 10px 10px; color: #6f8495; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #ffffff12; white-space: nowrap; }
+tbody td { padding: 12px 10px; border-bottom: 1px solid #ffffff08; color: #c3ceda; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #ffffff05; }
+
+.badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.badge.buy { color: #34d399; background: #34d39918; }
+.badge.sell { color: #fb7185; background: #fb718518; }
+.badge.hold { color: #a1a9f0; background: #a1a9f018; }
+.badge.approved { color: #60a5fa; background: #60a5fa18; }
+.badge.rejected { color: #94a3b8; background: #94a3b818; }
+
+.decision-list { display: grid; gap: 4px; }
+.decision-row { padding: 13px 0; border-bottom: 1px solid #ffffff0a; }
+.decision-row:last-child { border-bottom: none; padding-bottom: 0; }
+.decision-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.decision-top strong { font-size: .92rem; }
+.decision-time { margin-left: auto; color: #5f7586; font-size: .78rem; }
+.decision-reason { margin: 7px 0 3px; color: #aebbc6; font-size: .84rem; line-height: 1.5; }
+.decision-meta { margin: 0; color: #5f7586; font-size: .76rem; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+@media (max-width: 1200px) {
+  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+}
 
 @media (max-width: 900px) {
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
@@ -49,4 +91,5 @@ h2 { margin: 2px 0 0; font-size: 1.15rem; }
   .metrics-grid { grid-template-columns: 1fr; }
   .page-shell { width: min(92vw, 1400px); padding-top: 22px; }
   .status-row { gap: 7px; }
+  .decision-time { margin-left: 0; }
 }
