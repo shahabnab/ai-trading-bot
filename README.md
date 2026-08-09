@@ -50,19 +50,44 @@ The model or LLM must never bypass the risk manager.
 
 ## Initial stack
 
-- Python 3.11+
+- Conda environment (`ai-trading-bot`)
+- Python 3.11
 - FastAPI backend
 - Pydantic settings
 - pytest
 - Next.js + React + TypeScript dashboard
 - PostgreSQL planned for market/trading data
 
-## Run backend locally
+## Create the Conda environment
+
+From the repository root:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate ai-trading-bot
+```
+
+If the environment already exists and `environment.yml` changes later, update it with:
+
+```bash
+conda env update -f environment.yml --prune
+conda activate ai-trading-bot
+```
+
+## Run backend locally
+
+With the Conda environment activated:
+
+### Windows
+
+```bash
+copy .env.example .env
+uvicorn backend.main:app --reload
+```
+
+### Linux/macOS
+
+```bash
 cp .env.example .env
 uvicorn backend.main:app --reload
 ```
@@ -75,13 +100,31 @@ Run backend tests:
 pytest
 ```
 
+`requirements.txt` is retained as a lightweight pip-compatible dependency list, but Conda users should use `environment.yml` as the primary environment definition.
+
 ## Run dashboard locally
+
+The frontend uses Node.js/npm separately from the Python Conda environment.
 
 In another terminal:
 
 ```bash
 cd frontend
 npm install
+```
+
+Then create the frontend local environment file:
+
+### Windows
+
+```bash
+copy .env.local.example .env.local
+npm run dev
+```
+
+### Linux/macOS
+
+```bash
 cp .env.local.example .env.local
 npm run dev
 ```
