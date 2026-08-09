@@ -7,11 +7,12 @@ from pydantic import BaseModel, Field
 from backend.coinex import CoinExAPIError, CoinExClient
 from backend.config import settings
 from backend.market import CoinExMarketClient, MarketDataError
+from backend.ml import ModelRegistry, ModelRegistryError
 from backend.paper import PaperBroker, PaperBrokerError, PaperStore
 from backend.risk.manager import RiskManager, TradeProposal
 
 
-app = FastAPI(title=settings.app_name, version="0.3.0")
+app = FastAPI(title=settings.app_name, version="0.4.0")
 
 market_client = CoinExMarketClient()
 paper_store = PaperStore(settings.paper_db_path, settings.paper_initial_balance_usdt)
@@ -24,6 +25,7 @@ risk_manager = RiskManager(
     min_confidence=settings.paper_min_confidence,
     max_order_fraction=settings.paper_max_order_fraction,
 )
+model_registry = ModelRegistry(settings.model_registry_path)
 
 
 class PaperSignalRequest(BaseModel):
@@ -113,6 +115,7 @@ def health() -> dict[str, str | bool]:
         "trading_mode": settings.trading_mode.value,
         "coinex_configured": settings.coinex_configured,
         "paper_engine": True,
+        "ml_registry": True,
     }
 
 
@@ -142,6 +145,28 @@ async def market_klines(
         "period": period,
         "candles": candles,
     }
+
+
+@app.get("/api/ml/registry")
+def ml_registry_summary() -> dict[str, object]:
+    """Return portable model-registry metadata without loading model binaries."""
+    return model_registry.summary()
+
+
+@app.get("/api/ml/models/{model_id}")
+def ml_model_manifest(model_id: str) -> dict[str, object]:
+    try:
+        return model_registry.get_manifest(model_id)
+    except ModelRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/ml/models/{model_id}/verify")
+def ml_model_verify(model_id: str) -> dict[str, object]:
+    try:
+        return model_registry.verify_model(model_id)
+    except ModelRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/paper/portfolio")
