@@ -23,6 +23,8 @@ data/raw/
 data/processed/
 artifacts/
 models/checkpoints/
+state/model_registry/
+logs/ml/
 
 # Notebooks
 .ipynb_checkpoints/
