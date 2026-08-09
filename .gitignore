@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Data/model artifacts
+*.db
+*.sqlite
+*.sqlite3
+data/raw/
+data/processed/
+artifacts/
+models/checkpoints/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Frontend
+node_modules/
+.next/
+dist/
+build/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
