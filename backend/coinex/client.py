@@ -2,8 +2,9 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import Any
+from decimal import Decimal, InvalidOperation
+from typing import Any, Mapping, Sequence
+from urllib.parse import urlencode
 
 import httpx
 
@@ -66,15 +67,28 @@ class CoinExClient:
             "Content-Type": "application/json",
         }
 
-    async def _get_spot_balance_response(self) -> tuple[int, dict[str, Any]]:
-        endpoint = "/assets/spot/balance"
-        request_path = f"/v2{endpoint}"
+    @staticmethod
+    def _canonical_request_path(
+        endpoint: str,
+        params: Mapping[str, object] | Sequence[tuple[str, object]] | None = None,
+    ) -> str:
+        endpoint = "/" + endpoint.lstrip("/")
+        query = urlencode(params or {}, doseq=True)
+        return f"/v2{endpoint}" + (f"?{query}" if query else "")
+
+    async def _signed_get(
+        self,
+        endpoint: str,
+        params: Mapping[str, object] | Sequence[tuple[str, object]] | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        request_path = self._canonical_request_path(endpoint, params)
         timestamp_ms = int(time.time() * 1000)
         headers = self._headers("GET", request_path, timestamp_ms)
+        request_url = f"{self.base_url}{request_path.removeprefix('/v2')}"
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                response = await client.get(f"{self.base_url}{endpoint}", headers=headers)
+                response = await client.get(request_url, headers=headers)
             except httpx.HTTPError as exc:
                 raise CoinExAPIError(f"CoinEx HTTP request failed: {exc}") from exc
 
@@ -87,6 +101,9 @@ class CoinExClient:
             raise CoinExAPIError("CoinEx returned an unexpected JSON payload")
 
         return response.status_code, payload
+
+    async def _get_spot_balance_response(self) -> tuple[int, dict[str, Any]]:
+        return await self._signed_get("/assets/spot/balance")
 
     async def get_spot_balance_debug(self) -> dict[str, Any]:
         status_code, payload = await self._get_spot_balance_response()
@@ -127,7 +144,7 @@ class CoinExClient:
                     available=Decimal(str(item["available"])),
                     frozen=Decimal(str(item["frozen"])),
                 )
-            except (KeyError, TypeError, ValueError) as exc:
+            except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
                 raise CoinExAPIError("CoinEx returned a malformed balance entry") from exc
 
             if balance.total != 0:

@@ -1,8 +1,8 @@
 import hashlib
 import hmac
+from decimal import Decimal
 
 from backend.coinex.client import CoinExClient, SpotBalance
-from decimal import Decimal
 
 
 def test_signature_matches_hmac_sha256() -> None:
@@ -17,6 +17,17 @@ def test_signature_matches_hmac_sha256() -> None:
     ).hexdigest()
 
     assert client._signature("GET", path, timestamp) == expected
+
+
+def test_canonical_request_path_includes_query_string() -> None:
+    client = CoinExClient("access", "secret")
+
+    path = client._canonical_request_path(
+        "/assets/spot/transcation-history",
+        [("ccy", "USDT"), ("type", "trade")],
+    )
+
+    assert path == "/v2/assets/spot/transcation-history?ccy=USDT&type=trade"
 
 
 def test_spot_balance_total() -> None:
