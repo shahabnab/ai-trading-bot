@@ -11,7 +11,7 @@ Do not rent a GPU to collect data. Historical data is downloaded in bulk on a no
 - `backend/data_collection/` builds historical and incremental ML datasets.
 - `data/raw/` and `data/processed/` are ignored by Git.
 
-## Six-month historical dataset
+## Historical dataset
 
 The default historical pipeline collects:
 
@@ -26,6 +26,28 @@ The default historical pipeline collects:
 4. A leakage-aware **hourly training dataset** with backward-looking market features, aligned news text/sentiment, Fear & Greed, and future 1h/4h/24h return targets.
 
 Binance bulk archives are used for the initial backfill because downloading monthly ZIP files is far faster than polling one candle at a time. CoinEx remains the source for live/recent execution-side market data.
+
+### Hourly data-quality rule
+
+An hourly training bar is built only from sufficiently complete 1-minute history. The safe default requires **60 unique, minute-aligned 1-minute candles** for the hour. Incomplete hours are dropped rather than converted into distorted OHLCV bars.
+
+Every retained hourly row contains both `candle_count` and the compatibility field `minute_count`. Returns and targets are aligned by exact UTC timestamps, not merely by adjacent row position. Therefore a gap never turns a multi-hour price move into a fake 1-hour return or target.
+
+The completeness threshold is configurable for diagnostics:
+
+```powershell
+python -m backend.data_collection.dataset_builder --min-candles-per-hour 60
+```
+
+For model training, keep the default `60` unless there is a documented reason to run a data-quality ablation.
+
+After updating the data-quality logic, rebuild the processed dataset before training:
+
+```powershell
+python -m backend.data_collection.dataset_builder
+```
+
+or rerun the complete historical pipeline.
 
 ## Run the complete backfill
 
@@ -86,11 +108,12 @@ data/
 
 ## Training rows
 
-`data/processed/training/btc_hourly.jsonl` contains one row per completed hour. Important fields include:
+`data/processed/training/btc_hourly.jsonl` contains one row per retained completed hour. Important fields include:
 
 ```text
 timestamp
 open / high / low / close
+candle_count / minute_count
 volume
 quote_volume
 number_of_trades
@@ -112,7 +135,7 @@ target_return_4h
 target_return_24h
 ```
 
-The feature window ends at `timestamp`. News is included only if it was published during or before the completed feature hour. Future prices are used only for `target_return_*` fields.
+The feature window ends at `timestamp`. News is included only if it was published during or before the completed feature hour. Future prices are used only for `target_return_*` fields. A target is populated only when the exact future timestamp for that horizon exists.
 
 ## Individual commands
 
@@ -152,4 +175,4 @@ For a training row at time `t`, features may use only information available at o
 
 ## Next additions
 
-The current historical dataset is a strong first baseline. Later iterations can add futures funding/open-interest features, macro variables, on-chain data, technical indicators, Parquet export, and walk-forward train/validation/test splitting.
+The current historical dataset is a strong first baseline. Later iterations can add futures funding/open-interest features, macro variables, on-chain data, technical indicators, Parquet export, and richer walk-forward experiments.
