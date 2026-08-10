@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     coinex_access_id: str | None = Field(default=None, alias="COINEX_ACCESS_ID")
     coinex_secret_key: str | None = Field(default=None, alias="COINEX_SECRET_KEY")
+    alpha_vantage_api_key: str | None = Field(default=None, alias="ALPHAVANTAGE_API_KEY")
 
     paper_initial_balance_usdt: Decimal = Field(default=Decimal("10000"), alias="PAPER_INITIAL_BALANCE_USDT")
     paper_fee_rate: Decimal = Field(default=Decimal("0.002"), alias="PAPER_FEE_RATE")
