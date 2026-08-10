@@ -1,3 +1,4 @@
+import LivePredictionTerminal from "../components/LivePredictionTerminal";
 import {
   getHealth,
   getMarketQuote,
@@ -104,6 +105,8 @@ export default async function DashboardPage() {
         <strong>Paper mode only.</strong> Prices come from CoinEx, but every order, position and P/L value is simulated locally. No live-order execution exists in this phase.
       </section>
 
+      <LivePredictionTerminal />
+
       <section className="metrics-grid">
         <article className="metric-card">
           <span>Paper portfolio</span>
@@ -129,11 +132,7 @@ export default async function DashboardPage() {
         <article className="metric-card">
           <span>Win rate</span>
           <strong>{performance?.win_rate != null ? formatPercent(performance.win_rate) : "—"}</strong>
-          <small>
-            {performance
-              ? `${performance.winning_trades}/${performance.closed_trades} closed trades won`
-              : "No closed trades yet"}
-          </small>
+          <small>{performance ? `${performance.winning_trades}/${performance.closed_trades} closed trades won` : "No closed trades yet"}</small>
         </article>
         <article className="metric-card">
           <span>Open positions</span>
@@ -151,75 +150,39 @@ export default async function DashboardPage() {
         <div className="grid-column">
           <article className="panel large-panel">
             <div className="panel-heading">
-              <div>
-                <p className="eyebrow">PAPER PORTFOLIO</p>
-                <h2>Positions</h2>
-              </div>
+              <div><p className="eyebrow">PAPER PORTFOLIO</p><h2>Positions</h2></div>
               <span className="placeholder-chip">SIMULATED</span>
             </div>
             {portfolio && portfolio.positions.length > 0 ? (
               <div className="table-wrap">
                 <table>
-                  <thead>
-                    <tr>
-                      <th>Symbol</th>
-                      <th>Quantity</th>
-                      <th>Avg entry</th>
-                      <th>Last price</th>
-                      <th>Market value</th>
-                      <th>Unrealized P/L</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Symbol</th><th>Quantity</th><th>Avg entry</th><th>Last price</th><th>Market value</th><th>Unrealized P/L</th></tr></thead>
                   <tbody>
                     {portfolio.positions.map((position) => (
                       <tr key={position.symbol}>
                         <td><strong>{position.symbol}</strong></td>
                         <td>{formatPrice(position.quantity)}</td>
                         <td>{formatPrice(position.avg_entry_price)}</td>
-                        <td>
-                          {formatPrice(position.last_price)}
-                          {position.price_source !== "coinex" && (
-                            <span className="inline-chip">fallback</span>
-                          )}
-                        </td>
+                        <td>{formatPrice(position.last_price)}{position.price_source !== "coinex" && <span className="inline-chip">fallback</span>}</td>
                         <td>{formatMoney(position.market_value_usdt)} USDT</td>
-                        <td className={signClass(position.unrealized_pnl_usdt)}>
-                          {formatSignedMoney(position.unrealized_pnl_usdt)} USDT
-                        </td>
+                        <td className={signClass(position.unrealized_pnl_usdt)}>{formatSignedMoney(position.unrealized_pnl_usdt)} USDT</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="empty-state">
-                No paper positions yet. Send a BUY / SELL / HOLD signal to the paper API to start recording model performance.
-              </div>
-            )}
+            ) : <div className="empty-state">No paper positions yet. Send a BUY / SELL / HOLD signal to the paper API to start recording model performance.</div>}
           </article>
 
           <article className="panel large-panel">
             <div className="panel-heading">
-              <div>
-                <p className="eyebrow">TRADE LOG</p>
-                <h2>Recent fills</h2>
-              </div>
+              <div><p className="eyebrow">TRADE LOG</p><h2>Recent fills</h2></div>
               <span className="placeholder-chip">{performance ? `${performance.trade_count} total` : "0 total"}</span>
             </div>
             {trades.length > 0 ? (
               <div className="table-wrap">
                 <table>
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Side</th>
-                      <th>Symbol</th>
-                      <th>Quantity</th>
-                      <th>Exec price</th>
-                      <th>Fee</th>
-                      <th>Realized P/L</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Time</th><th>Side</th><th>Symbol</th><th>Quantity</th><th>Exec price</th><th>Fee</th><th>Realized P/L</th></tr></thead>
                   <tbody>
                     {trades.map((trade) => (
                       <tr key={trade.id}>
@@ -229,26 +192,17 @@ export default async function DashboardPage() {
                         <td>{formatPrice(trade.quantity)}</td>
                         <td>{formatPrice(trade.execution_price)}</td>
                         <td className="muted">{formatMoney(trade.fee_usdt)} USDT</td>
-                        <td className={signClass(trade.realized_pnl_usdt)}>
-                          {trade.side === "SELL" ? `${formatSignedMoney(trade.realized_pnl_usdt)} USDT` : "—"}
-                        </td>
+                        <td className={signClass(trade.realized_pnl_usdt)}>{trade.side === "SELL" ? `${formatSignedMoney(trade.realized_pnl_usdt)} USDT` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="empty-state">No paper fills yet. Filled trades will appear here with fees and realized P/L.</div>
-            )}
+            ) : <div className="empty-state">No paper fills yet. Filled trades will appear here with fees and realized P/L.</div>}
           </article>
 
           <article className="panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">BOT ACTIVITY</p>
-                <h2>System state</h2>
-              </div>
-            </div>
+            <div className="panel-heading"><div><p className="eyebrow">BOT ACTIVITY</p><h2>System state</h2></div></div>
             <div className="activity-item"><span className="activity-time">Market</span><p>CoinEx public ticker and candlestick data are read-only.</p></div>
             <div className="activity-item"><span className="activity-time">Broker</span><p>Paper fills include configurable fees and slippage and are logged to SQLite.</p></div>
             <div className="activity-item"><span className="activity-time">Safety</span><p>There is no CoinEx order-placement or withdrawal code.</p></div>
@@ -257,12 +211,7 @@ export default async function DashboardPage() {
 
         <div className="grid-column">
           <article className="panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">COINEX MARKET DATA</p>
-                <h2>Live watchlist</h2>
-              </div>
-            </div>
+            <div className="panel-heading"><div><p className="eyebrow">COINEX MARKET DATA</p><h2>Live watchlist</h2></div></div>
             <div className="watchlist">
               {watchlist.map((symbol, index) => {
                 const quote = quotes[index];
@@ -270,18 +219,7 @@ export default async function DashboardPage() {
                 return (
                   <div className="watch-row" key={symbol}>
                     <strong>{symbol}</strong>
-                    {quote ? (
-                      <span className="watch-quote">
-                        <span>{formatPrice(quote.last)} USDT</span>
-                        {changePct !== null && Number.isFinite(changePct) && (
-                          <span className={`change-pill ${changePct >= 0 ? "pos" : "neg"}`}>
-                            {changePct >= 0 ? "▲" : "▼"} {Math.abs(changePct).toFixed(2)}%
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span>Market data unavailable</span>
-                    )}
+                    {quote ? <span className="watch-quote"><span>{formatPrice(quote.last)} USDT</span>{changePct !== null && Number.isFinite(changePct) && <span className={`change-pill ${changePct >= 0 ? "pos" : "neg"}`}>{changePct >= 0 ? "▲" : "▼"} {Math.abs(changePct).toFixed(2)}%</span>}</span> : <span>Market data unavailable</span>}
                   </div>
                 );
               })}
@@ -289,12 +227,7 @@ export default async function DashboardPage() {
           </article>
 
           <article className="panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">MODEL DECISIONS</p>
-                <h2>Recent signals</h2>
-              </div>
-            </div>
+            <div className="panel-heading"><div><p className="eyebrow">MODEL DECISIONS</p><h2>Recent signals</h2></div></div>
             {decisions.length > 0 ? (
               <div className="decision-list">
                 {decisions.map((decision) => (
@@ -302,22 +235,15 @@ export default async function DashboardPage() {
                     <div className="decision-top">
                       <span className={badgeClassForSignal(decision.signal)}>{decision.signal}</span>
                       <strong>{decision.symbol}</strong>
-                      <span className={`badge ${decision.approved ? "approved" : "rejected"}`}>
-                        {decision.approved ? "approved" : "rejected"}
-                      </span>
+                      <span className={`badge ${decision.approved ? "approved" : "rejected"}`}>{decision.approved ? "approved" : "rejected"}</span>
                       <span className="decision-time">{formatRelativeTime(decision.created_at)}</span>
                     </div>
                     <p className="decision-reason">{decision.reason}</p>
-                    <p className="decision-meta">
-                      {decision.model_version} &middot; {decision.strategy_version}
-                      {decision.confidence != null && ` · ${(decision.confidence * 100).toFixed(0)}% confidence`}
-                    </p>
+                    <p className="decision-meta">{decision.model_version} &middot; {decision.strategy_version}{decision.confidence != null && ` · ${(decision.confidence * 100).toFixed(0)}% confidence`}</p>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="empty-state">No model decisions have been recorded yet.</div>
-            )}
+            ) : <div className="empty-state">No model decisions have been recorded yet.</div>}
           </article>
         </div>
       </section>

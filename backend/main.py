@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -8,6 +9,7 @@ from backend.coinex import CoinExAPIError, CoinExClient
 from backend.config import settings
 from backend.market import CoinExMarketClient, MarketDataError
 from backend.ml import ModelRegistry, ModelRegistryError
+from backend.ml.dashboard import collect_prediction_history
 from backend.paper import PaperBroker, PaperBrokerError, PaperStore
 from backend.risk.manager import RiskManager, TradeProposal
 
@@ -151,6 +153,21 @@ async def market_klines(
 def ml_registry_summary() -> dict[str, object]:
     """Return portable model-registry metadata without loading model binaries."""
     return model_registry.summary()
+
+
+@app.get("/api/ml/predictions")
+def ml_prediction_history(limit: int = Query(default=500, ge=1, le=5000)) -> dict[str, object]:
+    """Return the latest completed XGBoost/LSTM walk-forward prediction history.
+
+    The endpoint exposes immutable OOS artifacts for visualization only. Fold
+    models are not presented as live deployment models. A future forward
+    inference recorder can extend this response contract without changing the
+    dashboard chart API.
+    """
+    return collect_prediction_history(
+        [Path("artifacts/ml/runs"), Path(settings.ml_runs_path)],
+        limit=limit,
+    )
 
 
 @app.get("/api/ml/models/{model_id}")
