@@ -9,7 +9,7 @@ from typing import Any, Iterable
 import numpy as np
 
 
-FEATURE_VERSION = "btc-hourly-tech-v2-gap-safe"
+FEATURE_VERSION = "btc-hourly-tech-v3-ema-sma-seed"
 HOUR_MS = 60 * 60 * 1000
 
 BASE_FEATURE_NAMES = [
@@ -100,14 +100,40 @@ def _float(value: object, default: float = math.nan) -> float:
 
 
 def _ema(values: np.ndarray, span: int) -> np.ndarray:
-    alpha = 2.0 / (span + 1.0)
-    out = np.empty_like(values, dtype=np.float64)
-    out[:] = np.nan
-    if len(values) == 0:
+    """SMA-seeded EMA (TA-Lib convention) with NaN warm-up.
+
+    Seeding the recursion with the first observed value makes the EMA exactly
+    equal to that value at bar 0 and heavily biased for roughly 2x the span
+    afterwards, which silently contaminated ema_gap/MACD/slope features at the
+    start of every continuous segment. Seeding with the SMA of the first
+    ``span`` finite values and emitting NaN before that point removes the bias
+    at the cost of ``span`` warm-up bars, which the downstream validity mask
+    then drops. NaN prefixes in the input (e.g. the MACD line fed into its
+    signal EMA) are skipped when locating the seed window.
+    """
+    array = np.asarray(values, dtype=np.float64)
+    out = np.full(len(array), np.nan, dtype=np.float64)
+    if len(array) == 0 or span <= 0:
         return out
-    out[0] = values[0]
-    for idx in range(1, len(values)):
-        out[idx] = alpha * values[idx] + (1.0 - alpha) * out[idx - 1]
+
+    alpha = 2.0 / (span + 1.0)
+    finite = np.isfinite(array)
+    run = 0
+    seed_idx = -1
+    for idx, ok in enumerate(finite):
+        run = run + 1 if ok else 0
+        if run >= span:
+            seed_idx = idx
+            break
+    if seed_idx < 0:
+        return out
+
+    out[seed_idx] = float(np.mean(array[seed_idx - span + 1 : seed_idx + 1]))
+    for idx in range(seed_idx + 1, len(array)):
+        if finite[idx]:
+            out[idx] = alpha * array[idx] + (1.0 - alpha) * out[idx - 1]
+        else:
+            out[idx] = out[idx - 1]
     return out
 
 
@@ -227,8 +253,11 @@ def build_feature_dataset(
     trade_counts = np.asarray(
         [max(_float(row.get("number_of_trades"), 0.0), 0.0) for row in ordered], dtype=np.float64
     )
+    # A missing taker ratio must not default to 0.0: that value means "100%
+    # of quote volume was sold into the book", a strong bearish reading. 0.5
+    # is the neutral buy/sell balance.
     taker_ratio = np.asarray(
-        [_float(row.get("taker_buy_quote_ratio"), 0.0) for row in ordered], dtype=np.float64
+        [_float(row.get("taker_buy_quote_ratio"), 0.5) for row in ordered], dtype=np.float64
     )
 
     n = len(closes)

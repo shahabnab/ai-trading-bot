@@ -19,6 +19,12 @@ class PaperStore:
     def connection(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        # WAL lets API reads proceed while a trade is being written, and the
+        # busy timeout turns transient "database is locked" errors into short
+        # waits instead of request failures under concurrent FastAPI handlers.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA foreign_keys=ON")
         try:
             yield conn
             conn.commit()

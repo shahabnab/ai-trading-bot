@@ -17,6 +17,11 @@ class WalkForwardConfig:
     validation_days: int = 30
     test_days: int = 30
     step_days: int = 30
+    # Bars removed from the end of the train and validation windows so that
+    # targets looking `embargo_hours` into the future cannot overlap the next
+    # split. With a 1-hour prediction horizon the last training bar's target is
+    # the first validation hour's return; the embargo removes that overlap.
+    embargo_hours: int = 1
 
     def validate(self) -> None:
         for name, value in (
@@ -29,6 +34,10 @@ class WalkForwardConfig:
                 raise ValueError(f"{name} must be positive")
         if self.step_days < self.test_days:
             raise ValueError("step_days must be >= test_days so OOS test windows do not overlap")
+        if self.embargo_hours < 0:
+            raise ValueError("embargo_hours must be non-negative")
+        if self.embargo_hours * HOUR_MS >= min(self.train_days, self.validation_days) * DAY_MS:
+            raise ValueError("embargo_hours must be smaller than the train and validation windows")
 
 
 @dataclass(frozen=True)
@@ -70,8 +79,13 @@ def make_walk_forward_folds(
         if test_end - HOUR_MS > last:
             break
 
-        train_idx = np.flatnonzero((timestamps_ms >= train_start) & (timestamps_ms < train_end))
-        val_idx = np.flatnonzero((timestamps_ms >= train_end) & (timestamps_ms < validation_end))
+        embargo_ms = config.embargo_hours * HOUR_MS
+        train_idx = np.flatnonzero(
+            (timestamps_ms >= train_start) & (timestamps_ms < train_end - embargo_ms)
+        )
+        val_idx = np.flatnonzero(
+            (timestamps_ms >= train_end) & (timestamps_ms < validation_end - embargo_ms)
+        )
         test_idx = np.flatnonzero((timestamps_ms >= validation_end) & (timestamps_ms < test_end))
 
         if len(train_idx) and len(val_idx) and len(test_idx):

@@ -1,3 +1,5 @@
+import asyncio
+
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal
@@ -31,6 +33,12 @@ risk_manager = RiskManager(
     max_daily_drawdown_fraction=settings.paper_max_daily_drawdown_fraction,
 )
 model_registry = ModelRegistry(settings.model_registry_path)
+
+# The signal endpoint reads portfolio state, applies risk limits, and then
+# executes against the paper broker. Serializing the read-check-execute
+# sequence prevents two concurrent signals from both passing the exposure and
+# drawdown caps against the same stale snapshot.
+_signal_lock = asyncio.Lock()
 
 
 class PaperSignalRequest(BaseModel):
@@ -261,6 +269,13 @@ async def paper_signal(request: PaperSignalRequest) -> dict[str, object]:
             "trade": None,
         }
 
+    async with _signal_lock:
+        return await _evaluate_and_execute_signal(request, symbol, quote)
+
+
+async def _evaluate_and_execute_signal(
+    request: PaperSignalRequest, symbol: str, quote
+) -> dict[str, object]:
     portfolio = await _portfolio_snapshot()
     portfolio_value = Decimal(str(portfolio["portfolio_value_usdt"]))
     total_exposure = Decimal(str(portfolio["positions_value_usdt"]))

@@ -68,3 +68,25 @@ def test_duplicate_timestamps_fail_closed() -> None:
 
     with pytest.raises(ValueError, match="strictly increasing and unique"):
         build_feature_dataset(rows)
+
+
+def test_ema_features_use_sma_seed_with_nan_warmup() -> None:
+    from backend.ml.features import _ema
+
+    import numpy as np
+
+    values = np.arange(1.0, 51.0)
+    ema = _ema(values, span=10)
+    assert np.all(np.isnan(ema[:9]))
+    assert np.isfinite(ema[9])
+    # SMA seed of the first 10 values, not the first value itself.
+    assert ema[9] == pytest.approx(np.mean(values[:10]))
+
+
+def test_missing_taker_ratio_defaults_to_neutral() -> None:
+    rows = _rows()
+    for row in rows:
+        row.pop("taker_buy_quote_ratio")
+    dataset = build_feature_dataset(rows)
+    idx = dataset.feature_names.index("taker_buy_quote_ratio")
+    assert float(dataset.X[0, idx]) == pytest.approx(0.5)

@@ -131,9 +131,11 @@ def train_lstm_walk_forward(
     dataset_path: Path = DEFAULT_DATASET,
     run_root: Path = DEFAULT_RUN_ROOT,
     walk_forward: WalkForwardConfig = WalkForwardConfig(),
-    fee_bps: float = 5.0,
-    slippage_bps: float = 3.0,
-    spread_bps: float = 2.0,
+    # Defaults mirror the paper engine (PAPER_FEE_RATE=0.002, PAPER_SLIPPAGE_BPS=5)
+    # so backtest and paper-trading results are computed under the same costs.
+    fee_bps: float = 20.0,
+    slippage_bps: float = 5.0,
+    spread_bps: float = 0.0,
     execution_lambda: float = 2.0,
     include_sentiment: bool = False,
     sequence_length: int = 48,
@@ -505,9 +507,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--validation-days", type=int, default=30)
     parser.add_argument("--test-days", type=int, default=30)
     parser.add_argument("--step-days", type=int, default=30)
-    parser.add_argument("--fee-bps", type=float, default=5.0)
-    parser.add_argument("--slippage-bps", type=float, default=3.0)
-    parser.add_argument("--spread-bps", type=float, default=2.0)
+    parser.add_argument("--fee-bps", type=float, default=20.0)
+    parser.add_argument("--slippage-bps", type=float, default=5.0)
+    parser.add_argument("--spread-bps", type=float, default=0.0)
     parser.add_argument("--execution-lambda", type=float, default=2.0)
     parser.add_argument("--include-sentiment", action="store_true")
     parser.add_argument("--sequence-length", type=int, default=48)

@@ -126,3 +126,30 @@ def test_classification_metrics_random_probabilities() -> None:
     probs = rng.random(500)
     metrics = classification_metrics(labels, probs)
     assert 0.4 < metrics["auc"] < 0.6
+
+
+def test_walk_forward_embargo_trims_train_and_validation_ends() -> None:
+    hour_ms = 60 * 60 * 1000
+    timestamps = np.arange(0, 210 * DAY_MS, hour_ms, dtype=np.int64)
+    embargoed = make_walk_forward_folds(
+        timestamps,
+        WalkForwardConfig(
+            train_days=90, validation_days=30, test_days=30, step_days=30, embargo_hours=2
+        ),
+    )
+    plain = make_walk_forward_folds(
+        timestamps,
+        WalkForwardConfig(
+            train_days=90, validation_days=30, test_days=30, step_days=30, embargo_hours=0
+        ),
+    )
+    assert len(embargoed) == len(plain) == 3
+    for with_gap, without_gap in zip(embargoed, plain):
+        assert len(with_gap.train_indices) == len(without_gap.train_indices) - 2
+        assert len(with_gap.validation_indices) == len(without_gap.validation_indices) - 2
+        # Test windows are untouched: OOS coverage stays identical.
+        assert with_gap.test_indices.tolist() == without_gap.test_indices.tolist()
+        gap_ms = int(
+            timestamps[with_gap.validation_indices[0]] - timestamps[with_gap.train_indices[-1]]
+        )
+        assert gap_ms == 3 * hour_ms
