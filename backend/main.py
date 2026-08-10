@@ -26,6 +26,9 @@ paper_broker = PaperBroker(
 risk_manager = RiskManager(
     min_confidence=settings.paper_min_confidence,
     max_order_fraction=settings.paper_max_order_fraction,
+    max_total_exposure_fraction=settings.paper_max_total_exposure_fraction,
+    max_symbol_exposure_fraction=settings.paper_max_symbol_exposure_fraction,
+    max_daily_drawdown_fraction=settings.paper_max_daily_drawdown_fraction,
 )
 model_registry = ModelRegistry(settings.model_registry_path)
 
@@ -260,6 +263,13 @@ async def paper_signal(request: PaperSignalRequest) -> dict[str, object]:
 
     portfolio = await _portfolio_snapshot()
     portfolio_value = Decimal(str(portfolio["portfolio_value_usdt"]))
+    total_exposure = Decimal(str(portfolio["positions_value_usdt"]))
+    symbol_exposure = Decimal("0")
+    for item in portfolio["positions"]:
+        if isinstance(item, dict) and str(item.get("symbol", "")).upper() == symbol:
+            symbol_exposure = Decimal(str(item.get("market_value_usdt", "0")))
+            break
+    daily_start_value = paper_store.get_or_create_daily_start_portfolio_value(portfolio_value)
 
     if request.signal == "BUY":
         if request.notional_usdt is None:
@@ -298,6 +308,10 @@ async def paper_signal(request: PaperSignalRequest) -> dict[str, object]:
             reference_price=quote.last,
             confidence=request.confidence,
             portfolio_value_usdt=portfolio_value,
+            model_version=request.model_version,
+            total_exposure_usdt=total_exposure,
+            symbol_exposure_usdt=symbol_exposure,
+            daily_start_portfolio_value_usdt=daily_start_value,
         )
     )
 

@@ -74,6 +74,12 @@ class PaperStore:
                     strategy_version TEXT NOT NULL,
                     market_price TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS paper_daily_risk_state (
+                    date_utc TEXT PRIMARY KEY,
+                    start_portfolio_value_usdt TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             row = conn.execute("SELECT id FROM paper_account WHERE id = 1").fetchone()
@@ -87,6 +93,40 @@ class PaperStore:
     @staticmethod
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def get_or_create_daily_start_portfolio_value(
+        self,
+        current_portfolio_value: Decimal,
+        *,
+        now: datetime | None = None,
+    ) -> Decimal:
+        """Return the first observed paper-equity value for the current UTC day."""
+        if current_portfolio_value <= 0:
+            raise ValueError("current portfolio value must be positive")
+
+        observed_at = now or datetime.now(timezone.utc)
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        observed_at = observed_at.astimezone(timezone.utc)
+        date_key = observed_at.date().isoformat()
+
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT start_portfolio_value_usdt FROM paper_daily_risk_state WHERE date_utc = ?",
+                (date_key,),
+            ).fetchone()
+            if row is not None:
+                return Decimal(row["start_portfolio_value_usdt"])
+
+            conn.execute(
+                """
+                INSERT INTO paper_daily_risk_state (
+                    date_utc, start_portfolio_value_usdt, created_at
+                ) VALUES (?, ?, ?)
+                """,
+                (date_key, str(current_portfolio_value), observed_at.isoformat()),
+            )
+            return current_portfolio_value
 
     def get_account(self) -> dict[str, str]:
         with self.connection() as conn:
