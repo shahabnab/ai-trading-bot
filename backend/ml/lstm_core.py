@@ -59,6 +59,69 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             handle.write(json.dumps(row, sort_keys=True, default=_jsonable) + "\n")
 
 
+def _fmt_ts(timestamp_ms: int) -> str:
+    return datetime.fromtimestamp(timestamp_ms / 1000.0, UTC).strftime("%Y-%m-%d")
+
+
+def _make_progress_callback(
+    tf: Any,
+    *,
+    fold: int,
+    fold_count: int,
+    total_epochs: int,
+    patience: int,
+    target_scale: float,
+) -> Any:
+    """Per-epoch console reporting in interpretable units.
+
+    Keras losses are computed on z-scored targets, so the raw numbers mean
+    nothing in trading terms. This callback converts the validation MAE back
+    into basis points and reports the direction head's validation accuracy,
+    which are the two numbers worth watching while a fold trains.
+    """
+
+    class _EpochProgress(tf.keras.callbacks.Callback):
+        def __init__(self) -> None:
+            super().__init__()
+            self.best_val = float("inf")
+            self.best_epoch = 0
+
+        @staticmethod
+        def _find(logs: dict[str, Any], *fragments: str) -> float | None:
+            for key, value in logs.items():
+                if all(fragment in key for fragment in fragments):
+                    return float(value)
+            return None
+
+        def on_epoch_end(self, epoch: int, logs: dict[str, Any] | None = None) -> None:
+            logs = logs or {}
+            val_loss = self._find(logs, "val_loss")
+            if val_loss is not None and val_loss < self.best_val:
+                self.best_val = val_loss
+                self.best_epoch = epoch + 1
+
+            mae_scaled = self._find(logs, "val_", "log_return", "mae")
+            mae_bps = mae_scaled * target_scale * 1e4 if mae_scaled is not None else float("nan")
+            dir_acc = self._find(logs, "val_", "direction", "acc")
+            since_best = epoch + 1 - self.best_epoch
+            print(
+                f"fold {fold}/{fold_count} | "
+                f"epoch {epoch + 1:>3}/{total_epochs} | "
+                f"val typical error {mae_bps:6.1f} bps | "
+                f"val direction "
+                + (f"{dir_acc:.1%}" if dir_acc is not None else "  n/a")
+                + f" | best epoch {self.best_epoch}"
+                + (
+                    f" (early stop in {max(patience - since_best, 0)})"
+                    if since_best > 0
+                    else " *"
+                ),
+                flush=True,
+            )
+
+    return _EpochProgress()
+
+
 def _build_model(
     tf: Any,
     *,
@@ -290,6 +353,16 @@ def train_lstm_walk_forward(
                     "reduce --sequence-length or provide more continuous hourly data"
                 )
 
+            print(
+                f"\n=== fold {fold.fold}/{len(folds)} | "
+                f"train {_fmt_ts(int(dataset.timestamps[train_idx[0]]))}"
+                f" to {_fmt_ts(int(dataset.timestamps[train_idx[-1]]))}"
+                f" ({len(train_targets):,} seq) | "
+                f"validate to {_fmt_ts(int(dataset.timestamps[val_idx[-1]]))} | "
+                f"test to {_fmt_ts(int(dataset.timestamps[test_idx[-1]]))} ===",
+                flush=True,
+            )
+
             tf.keras.backend.clear_session()
             tf.keras.utils.set_random_seed(seed + fold.fold)
             model = _build_model(
@@ -320,6 +393,14 @@ def train_lstm_walk_forward(
                     patience=max(early_stopping_patience // 2, 1),
                     min_lr=1e-5,
                     verbose=0,
+                ),
+                _make_progress_callback(
+                    tf,
+                    fold=fold.fold,
+                    fold_count=len(folds),
+                    total_epochs=epochs,
+                    patience=early_stopping_patience,
+                    target_scale=float(np.mean(np.atleast_1d(y_stats.scale))),
                 ),
             ]
             history = model.fit(
@@ -393,6 +474,19 @@ def train_lstm_walk_forward(
             }
             fold_summaries.append(fold_summary)
             logger.log_event(run_id, "fold_completed", **fold_summary)
+
+            naive_bps = fold_metrics["rmse_zero_baseline"] * 1e4
+            model_bps = fold_metrics["rmse_log_return"] * 1e4
+            print(
+                f"fold {fold.fold} out-of-sample verdict:\n"
+                f"  forecast error : {model_bps:.1f} bps vs {naive_bps:.1f} bps for "
+                f"'always predict 0' -> skill {fold_metrics['skill_vs_zero']:+.2%} "
+                f"(positive = model beats doing nothing)\n"
+                f"  direction      : {fold_metrics['direction_accuracy']:.1%} correct, "
+                f"AUC {fold_metrics['auc']:.3f} "
+                f"(0.500 = coin flip, >0.53 is meaningful at hourly horizon)",
+                flush=True,
+            )
 
             for local_idx, dataset_idx in enumerate(test_targets):
                 prediction_rows.append(
@@ -565,18 +659,41 @@ def main() -> None:
         seed=args.seed,
     )
 
-    print("LSTM walk-forward evaluation complete")
-    print(f"Run: {summary['run_id']}")
-    print(f"OOS rows: {summary['oos_prediction_count']:,}")
-    print(f"Direction accuracy: {summary['forecast_metrics']['direction_accuracy']:.4f}")
-    print(f"Direction AUC: {summary['direction_classification']['auc']:.4f}")
+    forecast = summary["forecast_metrics"]
+    strategies = summary["strategies"]
+    buy_hold = strategies["buy_and_hold"]
+
+    print("\n================ LSTM walk-forward: final verdict ================")
+    print(f"Run {summary['run_id']} | {summary['oos_prediction_count']:,} out-of-sample hours")
     print(
-        "Cost-aware Sharpe: "
-        f"{summary['strategies']['lstm_cost_aware_long_only']['sharpe']:.3f}"
+        f"1. Forecast skill : {forecast['skill_vs_zero']:+.2%} vs 'always predict 0' "
+        "(positive = the model's errors are smaller than doing nothing)"
     )
     print(
-        "Probability-gated Sharpe: "
-        f"{summary['strategies']['lstm_probability_gated']['sharpe']:.3f}"
+        f"2. Direction      : {forecast['direction_accuracy']:.1%} of hourly moves called "
+        f"correctly | AUC {summary['direction_classification']['auc']:.3f} "
+        "(0.500 = coin flip)"
+    )
+    print("3. Money test (after 25 bps costs, same period, Sharpe / total return):")
+    for label, key in (
+        ("model, cost-hurdle   ", "lstm_cost_aware_long_only"),
+        ("model, prob-gated    ", "lstm_probability_gated"),
+        ("EMA baseline         ", "ema20_ema50_price_above_ema200"),
+        ("buy & hold           ", "buy_and_hold"),
+    ):
+        strat = strategies[key]
+        print(
+            f"   {label}: Sharpe {strat['sharpe']:+6.3f} | "
+            f"return {strat['cumulative_return']:+8.2%} | "
+            f"max drawdown {strat['max_drawdown']:.1%}"
+        )
+    beats_market = (
+        strategies["lstm_cost_aware_long_only"]["sharpe"] > buy_hold["sharpe"]
+        or strategies["lstm_probability_gated"]["sharpe"] > buy_hold["sharpe"]
+    )
+    print(
+        "-> A strategy only matters if its Sharpe beats buy & hold: "
+        + ("at least one model strategy does." if beats_market else "none does yet.")
     )
     print(f"Artifacts: {args.run_root / summary['run_id']}")
 

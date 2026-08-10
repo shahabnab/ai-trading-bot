@@ -120,9 +120,17 @@ def regression_metrics(actual_log_return: np.ndarray, predicted_log_return: np.n
     else:
         correlation = 0.0
 
+    # "Always predict zero" is the no-skill reference for return forecasting:
+    # its RMSE equals the RMS of the actual returns. skill_vs_zero > 0 means
+    # the model's errors are smaller than simply forecasting no movement.
+    rmse_zero = float(np.sqrt(np.mean(actual * actual)))
+    skill = 1.0 - rmse / rmse_zero if rmse_zero > 0.0 else 0.0
+
     return {
         "rmse_log_return": rmse,
         "mae_log_return": mae,
+        "rmse_zero_baseline": rmse_zero,
+        "skill_vs_zero": float(skill),
         "direction_accuracy": direction_accuracy,
         "correlation": correlation,
     }
