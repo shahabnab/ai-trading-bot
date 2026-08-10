@@ -54,8 +54,8 @@ def make_walk_forward_folds(
     config.validate()
     if len(timestamps_ms) == 0:
         return []
-    if np.any(np.diff(timestamps_ms) < 0):
-        raise ValueError("timestamps must be sorted")
+    if np.any(np.diff(timestamps_ms) <= 0):
+        raise ValueError("timestamps must be strictly increasing and unique")
 
     first = int(timestamps_ms[0])
     last = int(timestamps_ms[-1])
@@ -120,12 +120,17 @@ def _performance_metrics(returns: np.ndarray, positions: np.ndarray, turnovers: 
     turnovers = np.asarray(turnovers, dtype=np.float64)
     if returns.size == 0:
         raise ValueError("strategy return series is empty")
+    if not (returns.shape == positions.shape == turnovers.shape):
+        raise ValueError("returns, positions, and turnovers must have identical shapes")
 
-    equity = np.cumprod(1.0 + returns)
-    cumulative_return = float(equity[-1] - 1.0)
+    # Include the initial capital point so a first-period loss is measured as
+    # drawdown from 1.0 instead of incorrectly becoming the first equity peak.
+    equity_after = np.cumprod(1.0 + returns)
+    equity = np.concatenate(([1.0], equity_after))
+    cumulative_return = float(equity_after[-1] - 1.0)
     periods = float(len(returns))
-    if equity[-1] > 0.0:
-        annualized_return = float(equity[-1] ** (HOURS_PER_YEAR / periods) - 1.0)
+    if equity_after[-1] > 0.0:
+        annualized_return = float(equity_after[-1] ** (HOURS_PER_YEAR / periods) - 1.0)
     else:
         annualized_return = -1.0
 
@@ -138,9 +143,20 @@ def _performance_metrics(returns: np.ndarray, positions: np.ndarray, turnovers: 
     drawdown = equity / running_max - 1.0
     max_drawdown = float(np.min(drawdown))
 
-    downside = returns[returns < 0.0]
-    downside_std = float(np.std(downside, ddof=0)) if downside.size else 0.0
-    sortino = mean_return / downside_std * math.sqrt(HOURS_PER_YEAR) if downside_std > 0 else 0.0
+    # Sortino downside deviation versus MAR=0. Non-negative observations remain
+    # in the denominator as zeros instead of being discarded before std().
+    downside = np.minimum(returns, 0.0)
+    downside_deviation = float(np.sqrt(np.mean(downside * downside)))
+    sortino = (
+        mean_return / downside_deviation * math.sqrt(HOURS_PER_YEAR)
+        if downside_deviation > 0
+        else 0.0
+    )
+
+    previous_positions = np.concatenate(([0.0], positions[:-1]))
+    entries = (positions > previous_positions) & (turnovers > 0.0)
+    exits = (positions < previous_positions) & (turnovers > 0.0)
+    position_changes = turnovers > 0.0
 
     return {
         "cumulative_return": cumulative_return,
@@ -151,7 +167,9 @@ def _performance_metrics(returns: np.ndarray, positions: np.ndarray, turnovers: 
         "max_drawdown": max_drawdown,
         "exposure": float(np.mean(positions)),
         "turnover": float(np.sum(turnovers)),
-        "trade_count": int(np.count_nonzero(turnovers > 0.0)),
+        "trade_count": int(np.count_nonzero(entries)),
+        "round_trip_count": int(np.count_nonzero(exits)),
+        "position_change_count": int(np.count_nonzero(position_changes)),
         "positive_bar_rate": float(np.mean(returns > 0.0)),
     }
 
