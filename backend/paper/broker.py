@@ -45,6 +45,9 @@ class PaperBroker:
         gross = quantity * execution_price
         fee = gross * self.fee_rate
         debit = gross + fee
+        # Store a fee-inclusive unit cost so later realized P/L includes the buy
+        # fee as well as the sell fee. Cash accounting remains unchanged.
+        unit_cost = debit / quantity
 
         with self.store.connection() as conn:
             account = conn.execute("SELECT * FROM paper_account WHERE id = 1").fetchone()
@@ -60,7 +63,7 @@ class PaperBroker:
             now = self.store._now()
             if current is None:
                 new_qty = quantity
-                new_avg = execution_price
+                new_avg = unit_cost
                 conn.execute(
                     "INSERT INTO paper_positions (symbol, quantity, avg_entry_price, updated_at) VALUES (?, ?, ?, ?)",
                     (symbol, str(new_qty), str(new_avg), now),
@@ -69,7 +72,7 @@ class PaperBroker:
                 old_qty = Decimal(current["quantity"])
                 old_avg = Decimal(current["avg_entry_price"])
                 new_qty = old_qty + quantity
-                new_avg = ((old_qty * old_avg) + (quantity * execution_price)) / new_qty
+                new_avg = ((old_qty * old_avg) + (quantity * unit_cost)) / new_qty
                 conn.execute(
                     "UPDATE paper_positions SET quantity = ?, avg_entry_price = ?, updated_at = ? WHERE symbol = ?",
                     (str(new_qty), str(new_avg), now, symbol),
