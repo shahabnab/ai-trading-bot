@@ -8,7 +8,7 @@ from pathlib import Path
 
 from backend.config import settings
 from backend.data_collection.binance_history import backfill_binance_klines
-from backend.data_collection.dataset_builder import build_hourly_training_dataset
+from backend.data_collection.dataset_builder import DEFAULT_OUTPUT, build_hourly_training_dataset
 from backend.data_collection.fear_greed_history import backfill_fear_greed
 from backend.data_collection.news_history import NewsHistoryError, backfill_btc_news
 
@@ -120,7 +120,9 @@ async def main() -> None:
     print("[4/4] Build hourly training dataset")
     market_file = Path("data/raw/market/binance") / args.symbol.upper() / args.interval / "candles.jsonl"
     output_file = (
-        Path("data/processed/training")
+        DEFAULT_OUTPUT
+        if args.symbol.upper() == "BTCUSDT" and args.interval == "1m"
+        else Path("data/processed/training")
         / f"{args.symbol.lower()}_{args.interval}_hourly.jsonl"
     )
     build_hourly_training_dataset(
