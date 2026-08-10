@@ -154,15 +154,23 @@ def train_xgboost_walk_forward(
             )
             dtest = xgb.DMatrix(dataset.X[test_idx], feature_names=dataset.feature_names)
 
+            # The default early_stopping_rounds API returns the last booster, while
+            # OOS evaluation historically used only best_iteration. save_best=True
+            # prunes the returned booster itself, so the model written to disk is
+            # exactly the model whose OOS predictions are reported.
+            early_stop = xgb.callback.EarlyStopping(
+                rounds=early_stopping_rounds,
+                save_best=True,
+            )
             booster = xgb.train(
                 xgb_params,
                 dtrain,
                 num_boost_round=num_boost_round,
                 evals=[(dval, "validation")],
-                early_stopping_rounds=early_stopping_rounds,
+                callbacks=[early_stop],
                 verbose_eval=False,
             )
-            predictions = booster.predict(dtest, iteration_range=(0, booster.best_iteration + 1))
+            predictions = booster.predict(dtest)
             fold_metrics = regression_metrics(dataset.y_log_return[test_idx], predictions)
 
             model_path = model_dir / f"fold_{fold.fold:02d}.json"
