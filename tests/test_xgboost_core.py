@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("xgboost")
+xgb = pytest.importorskip("xgboost")
 
 from backend.ml.evaluation import WalkForwardConfig
 from backend.ml.features import HOUR_MS
@@ -68,3 +68,7 @@ def test_xgboost_pipeline_writes_oos_artifacts(tmp_path: Path) -> None:
     assert (run_dir / "summary.json").is_file()
     assert (run_dir / "predictions.jsonl").is_file()
     assert any((run_dir / "models").glob("fold_*.json"))
+
+    saved_model = xgb.Booster()
+    saved_model.load_model(run_dir / "models" / "fold_01.json")
+    assert saved_model.num_boosted_rounds() == summary["folds"][0]["best_iteration"] + 1
