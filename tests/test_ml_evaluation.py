@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from backend.ml.evaluation import (
+    classification_metrics,
+    probability_gated_backtest,
     DAY_MS,
     WalkForwardConfig,
     long_only_cost_aware_backtest,
@@ -91,3 +93,36 @@ def test_sortino_uses_zero_mar_downside_deviation() -> None:
     expected = mean_return / downside_deviation * math.sqrt(24.0 * 365.0)
 
     assert math.isclose(metrics["sortino"], expected, rel_tol=1e-12)
+
+
+def test_probability_gated_backtest_uses_hysteresis() -> None:
+    prob = np.array([0.60, 0.50, 0.44, 0.60, 0.56, 0.40])
+    actual = np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01])
+    metrics, returns, positions, turnovers = probability_gated_backtest(
+        prob, actual, cost_rate=0.001, entry_threshold=0.55, exit_threshold=0.45
+    )
+    # Enter at bar 0, hold through 0.50 (above exit), exit at 0.44,
+    # re-enter at 0.60, hold at 0.56, exit at 0.40.
+    assert positions.tolist() == [1.0, 1.0, 0.0, 1.0, 1.0, 0.0]
+    assert turnovers.tolist() == [1.0, 0.0, 1.0, 1.0, 0.0, 1.0]
+    assert metrics["trade_count"] == 2
+    assert returns[1] == pytest.approx(0.01)
+    assert returns[2] == pytest.approx(-0.001)
+
+
+def test_classification_metrics_perfect_separation() -> None:
+    labels = np.array([0.0, 0.0, 1.0, 1.0])
+    probs = np.array([0.1, 0.2, 0.8, 0.9])
+    metrics = classification_metrics(labels, probs)
+    assert metrics["auc"] == pytest.approx(1.0)
+    assert metrics["direction_accuracy_prob"] == pytest.approx(1.0)
+    assert metrics["direction_base_rate"] == pytest.approx(0.5)
+    assert 0.0 <= metrics["brier_score"] <= 0.05
+
+
+def test_classification_metrics_random_probabilities() -> None:
+    rng = np.random.default_rng(0)
+    labels = (rng.random(500) > 0.5).astype(np.float64)
+    probs = rng.random(500)
+    metrics = classification_metrics(labels, probs)
+    assert 0.4 < metrics["auc"] < 0.6

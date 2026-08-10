@@ -74,3 +74,11 @@ def test_lstm_walk_forward_smoke(tmp_path: Path) -> None:
     assert (run_dir / "predictions.jsonl").is_file()
     assert any((run_dir / "models").glob("fold_*.keras"))
     assert any((run_dir / "scalers").glob("fold_*.json"))
+    assert "direction_classification" in summary
+    assert 0.0 <= summary["direction_classification"]["auc"] <= 1.0
+    assert "lstm_probability_gated" in summary["strategies"]
+
+    with (run_dir / "predictions.jsonl").open("r", encoding="utf-8") as handle:
+        first_row = json.loads(handle.readline())
+    assert 0.0 <= first_row["predicted_direction_prob"] <= 1.0
+    assert first_row["lstm_prob_position"] in (0.0, 1.0)

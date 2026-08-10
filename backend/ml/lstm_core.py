@@ -12,9 +12,11 @@ import numpy as np
 from backend.ml.evaluation import (
     WalkForwardConfig,
     buy_and_hold_baseline,
+    classification_metrics,
     long_only_cost_aware_backtest,
     make_walk_forward_folds,
     moving_average_baseline,
+    probability_gated_backtest,
     regression_metrics,
 )
 from backend.ml.features import FEATURE_VERSION, build_feature_dataset, read_jsonl
@@ -63,26 +65,64 @@ def _build_model(
     sequence_length: int,
     feature_count: int,
     lstm_units: int,
+    lstm_layers: int,
     dense_units: int,
     dropout: float,
     learning_rate: float,
     clipnorm: float,
+    huber_delta: float,
+    direction_loss_weight: float,
 ) -> Any:
     inputs = tf.keras.Input(shape=(sequence_length, feature_count), name="features")
     # Keep recurrent dropout at zero so TensorFlow can use its optimized LSTM
     # implementation when compatible hardware is available. Regularization is
-    # applied after the recurrent layer instead.
-    x = tf.keras.layers.LSTM(lstm_units, name="lstm")(inputs)
+    # applied between and after the recurrent layers instead.
+    x = inputs
+    for layer_idx in range(lstm_layers):
+        is_last = layer_idx == lstm_layers - 1
+        x = tf.keras.layers.LSTM(
+            lstm_units,
+            return_sequences=not is_last,
+            name=f"lstm_{layer_idx + 1}",
+        )(x)
+        if not is_last:
+            x = tf.keras.layers.LayerNormalization(name=f"lstm_norm_{layer_idx + 1}")(x)
+            if dropout > 0.0:
+                x = tf.keras.layers.Dropout(dropout, name=f"lstm_dropout_{layer_idx + 1}")(x)
     if dropout > 0.0:
         x = tf.keras.layers.Dropout(dropout, name="lstm_dropout")(x)
     x = tf.keras.layers.Dense(dense_units, activation="relu", name="dense")(x)
     if dropout > 0.0:
         x = tf.keras.layers.Dropout(dropout, name="dense_dropout")(x)
-    outputs = tf.keras.layers.Dense(1, name="next_hour_log_return_scaled")(x)
 
-    model = tf.keras.Model(inputs=inputs, outputs=outputs, name="btc_lstm_return_forecaster")
+    regression_output = tf.keras.layers.Dense(1, name="next_hour_log_return_scaled")(x)
+    # A separate sigmoid head learns P(next-hour return > direction_threshold).
+    # Binary cross-entropy provides a cleaner training signal for the trading
+    # decision than regressing near-zero-mean returns with a squared loss.
+    direction_output = tf.keras.layers.Dense(
+        1, activation="sigmoid", name="direction_up_prob"
+    )(x)
+
+    model = tf.keras.Model(
+        inputs=inputs,
+        outputs=[regression_output, direction_output],
+        name="btc_lstm_return_forecaster_v2",
+    )
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=clipnorm)
-    model.compile(optimizer=optimizer, loss="mse", metrics=["mae"])
+    model.compile(
+        optimizer=optimizer,
+        loss={
+            # Huber is robust to the fat tails of hourly BTC returns, which
+            # otherwise dominate an MSE gradient.
+            "next_hour_log_return_scaled": tf.keras.losses.Huber(delta=huber_delta),
+            "direction_up_prob": tf.keras.losses.BinaryCrossentropy(),
+        },
+        loss_weights={
+            "next_hour_log_return_scaled": 1.0,
+            "direction_up_prob": direction_loss_weight,
+        },
+        metrics={"next_hour_log_return_scaled": ["mae"], "direction_up_prob": ["accuracy"]},
+    )
     return model
 
 
@@ -98,6 +138,7 @@ def train_lstm_walk_forward(
     include_sentiment: bool = False,
     sequence_length: int = 48,
     lstm_units: int = 64,
+    lstm_layers: int = 2,
     dense_units: int = 32,
     dropout: float = 0.20,
     learning_rate: float = 1e-3,
@@ -105,6 +146,11 @@ def train_lstm_walk_forward(
     epochs: int = 50,
     batch_size: int = 64,
     early_stopping_patience: int = 7,
+    huber_delta: float = 1.0,
+    direction_loss_weight: float = 0.3,
+    direction_threshold: float = 0.0,
+    prob_entry_threshold: float = 0.55,
+    prob_exit_threshold: float = 0.45,
     seed: int = 42,
 ) -> dict[str, Any]:
     import tensorflow as tf
@@ -116,8 +162,12 @@ def train_lstm_walk_forward(
         )
     if sequence_length <= 0:
         raise ValueError("sequence_length must be positive")
-    if lstm_units <= 0 or dense_units <= 0:
-        raise ValueError("lstm_units and dense_units must be positive")
+    if lstm_units <= 0 or dense_units <= 0 or lstm_layers <= 0:
+        raise ValueError("lstm_units, lstm_layers, and dense_units must be positive")
+    if huber_delta <= 0.0 or direction_loss_weight < 0.0:
+        raise ValueError("huber_delta must be positive and direction_loss_weight non-negative")
+    if not 0.0 <= prob_exit_threshold <= prob_entry_threshold <= 1.0:
+        raise ValueError("thresholds must satisfy 0 <= prob_exit <= prob_entry <= 1")
     if not 0.0 <= dropout < 1.0:
         raise ValueError("dropout must be in [0, 1)")
     if learning_rate <= 0.0 or clipnorm <= 0.0:
@@ -154,6 +204,7 @@ def train_lstm_walk_forward(
             "include_sentiment": include_sentiment,
             "sequence_length": sequence_length,
             "lstm_units": lstm_units,
+            "lstm_layers": lstm_layers,
             "dense_units": dense_units,
             "dropout": dropout,
             "learning_rate": learning_rate,
@@ -161,6 +212,11 @@ def train_lstm_walk_forward(
             "epochs": epochs,
             "batch_size": batch_size,
             "early_stopping_patience": early_stopping_patience,
+            "huber_delta": huber_delta,
+            "direction_loss_weight": direction_loss_weight,
+            "direction_threshold": direction_threshold,
+            "prob_entry_threshold": prob_entry_threshold,
+            "prob_exit_threshold": prob_exit_threshold,
             "seed": seed,
         },
         machine={
@@ -217,6 +273,15 @@ def train_lstm_walk_forward(
                 sequence_length=sequence_length,
             )
 
+            # Direction labels come from the unscaled log-return target so the
+            # classification head is independent of per-fold target scaling.
+            train_dir = (
+                dataset.y_log_return[train_targets] > direction_threshold
+            ).astype(np.float32)
+            val_dir = (
+                dataset.y_log_return[val_targets] > direction_threshold
+            ).astype(np.float32)
+
             if len(train_X) == 0 or len(val_X) == 0 or len(test_X) == 0:
                 raise ValueError(
                     f"fold {fold.fold} has no usable LSTM sequences; "
@@ -230,10 +295,13 @@ def train_lstm_walk_forward(
                 sequence_length=sequence_length,
                 feature_count=len(dataset.feature_names),
                 lstm_units=lstm_units,
+                lstm_layers=lstm_layers,
                 dense_units=dense_units,
                 dropout=dropout,
                 learning_rate=learning_rate,
                 clipnorm=clipnorm,
+                huber_delta=huber_delta,
+                direction_loss_weight=direction_loss_weight,
             )
             callbacks = [
                 tf.keras.callbacks.EarlyStopping(
@@ -242,12 +310,29 @@ def train_lstm_walk_forward(
                     patience=early_stopping_patience,
                     restore_best_weights=True,
                     verbose=0,
-                )
+                ),
+                tf.keras.callbacks.ReduceLROnPlateau(
+                    monitor="val_loss",
+                    mode="min",
+                    factor=0.5,
+                    patience=max(early_stopping_patience // 2, 1),
+                    min_lr=1e-5,
+                    verbose=0,
+                ),
             ]
             history = model.fit(
                 train_X,
-                train_y,
-                validation_data=(val_X, val_y),
+                {
+                    "next_hour_log_return_scaled": train_y,
+                    "direction_up_prob": train_dir,
+                },
+                validation_data=(
+                    val_X,
+                    {
+                        "next_hour_log_return_scaled": val_y,
+                        "direction_up_prob": val_dir,
+                    },
+                ),
                 epochs=epochs,
                 batch_size=batch_size,
                 shuffle=False,
@@ -255,10 +340,17 @@ def train_lstm_walk_forward(
                 verbose=0,
             )
 
-            predicted_scaled = model.predict(test_X, batch_size=batch_size, verbose=0).reshape(-1)
+            raw_outputs = model.predict(test_X, batch_size=batch_size, verbose=0)
+            predicted_scaled = np.asarray(raw_outputs[0]).reshape(-1)
+            predicted_prob = np.clip(np.asarray(raw_outputs[1]).reshape(-1), 0.0, 1.0)
             predictions = inverse_standardize(predicted_scaled, y_stats).astype(np.float64)
             actual_log = dataset.y_log_return[test_targets].astype(np.float64)
             fold_metrics = regression_metrics(actual_log, predictions)
+            fold_metrics.update(
+                classification_metrics(
+                    (actual_log > direction_threshold).astype(np.float64), predicted_prob
+                )
+            )
 
             val_losses = [float(value) for value in history.history.get("val_loss", [])]
             best_epoch = int(np.argmin(val_losses) + 1) if val_losses else len(history.epoch)
@@ -269,6 +361,8 @@ def train_lstm_walk_forward(
             scaler_payload = {
                 "feature_names": dataset.feature_names,
                 "sequence_length": sequence_length,
+                "lstm_layers": lstm_layers,
+                "direction_threshold": direction_threshold,
                 "feature_mean": x_stats.mean,
                 "feature_scale": x_stats.scale,
                 "target_mean": y_stats.mean,
@@ -306,6 +400,7 @@ def train_lstm_walk_forward(
                         "actual_simple_return_1h": float(dataset.y_simple_return[dataset_idx]),
                         "actual_log_return_1h": float(dataset.y_log_return[dataset_idx]),
                         "predicted_log_return_1h": float(predictions[local_idx]),
+                        "predicted_direction_prob": float(predicted_prob[local_idx]),
                         "close": float(dataset.closes[dataset_idx]),
                         "ema20": float(dataset.ema20[dataset_idx]),
                         "ema50": float(dataset.ema50[dataset_idx]),
@@ -323,12 +418,18 @@ def train_lstm_walk_forward(
         actual_simple = np.asarray(
             [row["actual_simple_return_1h"] for row in prediction_rows], dtype=np.float64
         )
+        direction_prob = np.asarray(
+            [row["predicted_direction_prob"] for row in prediction_rows], dtype=np.float64
+        )
         closes = np.asarray([row["close"] for row in prediction_rows], dtype=np.float64)
         ema20 = np.asarray([row["ema20"] for row in prediction_rows], dtype=np.float64)
         ema50 = np.asarray([row["ema50"] for row in prediction_rows], dtype=np.float64)
         ema200 = np.asarray([row["ema200"] for row in prediction_rows], dtype=np.float64)
 
         forecast_metrics = regression_metrics(actual_log, predicted)
+        direction_metrics = classification_metrics(
+            (actual_log > direction_threshold).astype(np.float64), direction_prob
+        )
         total_cost_bps = fee_bps + slippage_bps + spread_bps
         cost_rate = total_cost_bps / 10_000.0
         lstm_strategy, _, positions, turnovers = long_only_cost_aware_backtest(
@@ -336,6 +437,13 @@ def train_lstm_walk_forward(
             actual_simple,
             cost_rate=cost_rate,
             execution_lambda=execution_lambda,
+        )
+        prob_strategy, _, prob_positions, prob_turnovers = probability_gated_backtest(
+            direction_prob,
+            actual_simple,
+            cost_rate=cost_rate,
+            entry_threshold=prob_entry_threshold,
+            exit_threshold=prob_exit_threshold,
         )
         ma_strategy = moving_average_baseline(
             actual_simple,
@@ -347,9 +455,13 @@ def train_lstm_walk_forward(
         )
         buy_hold = buy_and_hold_baseline(actual_simple, cost_rate=cost_rate)
 
-        for row, position, turnover in zip(prediction_rows, positions, turnovers, strict=True):
+        for row, position, turnover, p_pos, p_turn in zip(
+            prediction_rows, positions, turnovers, prob_positions, prob_turnovers, strict=True
+        ):
             row["lstm_position"] = float(position)
             row["lstm_turnover"] = float(turnover)
+            row["lstm_prob_position"] = float(p_pos)
+            row["lstm_prob_turnover"] = float(p_turn)
 
         summary = {
             "run_id": run_id,
@@ -363,8 +475,10 @@ def train_lstm_walk_forward(
             "fold_count": len(folds),
             "oos_prediction_count": len(prediction_rows),
             "forecast_metrics": forecast_metrics,
+            "direction_classification": direction_metrics,
             "strategies": {
                 "lstm_cost_aware_long_only": lstm_strategy,
+                "lstm_probability_gated": prob_strategy,
                 "ema20_ema50_price_above_ema200": ma_strategy,
                 "buy_and_hold": buy_hold,
             },
@@ -398,6 +512,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-sentiment", action="store_true")
     parser.add_argument("--sequence-length", type=int, default=48)
     parser.add_argument("--lstm-units", type=int, default=64)
+    parser.add_argument("--lstm-layers", type=int, default=2)
     parser.add_argument("--dense-units", type=int, default=32)
     parser.add_argument("--dropout", type=float, default=0.20)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -405,6 +520,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--early-stopping-patience", type=int, default=7)
+    parser.add_argument("--huber-delta", type=float, default=1.0)
+    parser.add_argument("--direction-loss-weight", type=float, default=0.3)
+    parser.add_argument("--direction-threshold", type=float, default=0.0)
+    parser.add_argument("--prob-entry-threshold", type=float, default=0.55)
+    parser.add_argument("--prob-exit-threshold", type=float, default=0.45)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
@@ -427,6 +547,7 @@ def main() -> None:
         include_sentiment=args.include_sentiment,
         sequence_length=args.sequence_length,
         lstm_units=args.lstm_units,
+        lstm_layers=args.lstm_layers,
         dense_units=args.dense_units,
         dropout=args.dropout,
         learning_rate=args.learning_rate,
@@ -434,6 +555,11 @@ def main() -> None:
         epochs=args.epochs,
         batch_size=args.batch_size,
         early_stopping_patience=args.early_stopping_patience,
+        huber_delta=args.huber_delta,
+        direction_loss_weight=args.direction_loss_weight,
+        direction_threshold=args.direction_threshold,
+        prob_entry_threshold=args.prob_entry_threshold,
+        prob_exit_threshold=args.prob_exit_threshold,
         seed=args.seed,
     )
 
@@ -441,9 +567,14 @@ def main() -> None:
     print(f"Run: {summary['run_id']}")
     print(f"OOS rows: {summary['oos_prediction_count']:,}")
     print(f"Direction accuracy: {summary['forecast_metrics']['direction_accuracy']:.4f}")
+    print(f"Direction AUC: {summary['direction_classification']['auc']:.4f}")
     print(
         "Cost-aware Sharpe: "
         f"{summary['strategies']['lstm_cost_aware_long_only']['sharpe']:.3f}"
+    )
+    print(
+        "Probability-gated Sharpe: "
+        f"{summary['strategies']['lstm_probability_gated']['sharpe']:.3f}"
     )
     print(f"Artifacts: {args.run_root / summary['run_id']}")
 

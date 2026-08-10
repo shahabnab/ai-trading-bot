@@ -241,3 +241,92 @@ def buy_and_hold_baseline(actual_simple_return: np.ndarray, *, cost_rate: float 
     if len(actual):
         returns[0] -= cost_rate
     return _performance_metrics(returns, positions, turnover)
+
+
+def classification_metrics(labels: np.ndarray, probabilities: np.ndarray) -> dict[str, float]:
+    """Direction-classification quality: accuracy, base rate, Brier score, AUC."""
+    y = np.asarray(labels, dtype=np.float64)
+    p = np.asarray(probabilities, dtype=np.float64)
+    if y.shape != p.shape or y.size == 0:
+        raise ValueError("labels and probabilities must be non-empty arrays with identical shapes")
+    if np.any((p < 0.0) | (p > 1.0)):
+        raise ValueError("probabilities must lie in [0, 1]")
+
+    accuracy = float(np.mean((p >= 0.5) == (y > 0.5)))
+    base_rate = float(np.mean(y))
+    brier = float(np.mean((p - y) ** 2))
+
+    positives = p[y > 0.5]
+    negatives = p[y <= 0.5]
+    if len(positives) and len(negatives):
+        # Rank-based AUC (Mann-Whitney U) without external dependencies.
+        order = np.argsort(np.concatenate([negatives, positives]), kind="mergesort")
+        ranks = np.empty(len(order), dtype=np.float64)
+        ranks[order] = np.arange(1, len(order) + 1, dtype=np.float64)
+        # Average ranks for ties.
+        combined = np.concatenate([negatives, positives])
+        sorted_vals = combined[order]
+        idx = 0
+        while idx < len(sorted_vals):
+            j = idx
+            while j + 1 < len(sorted_vals) and sorted_vals[j + 1] == sorted_vals[idx]:
+                j += 1
+            if j > idx:
+                ranks[order[idx : j + 1]] = float(np.mean(ranks[order[idx : j + 1]]))
+            idx = j + 1
+        rank_sum_pos = float(np.sum(ranks[len(negatives):]))
+        auc = (rank_sum_pos - len(positives) * (len(positives) + 1) / 2.0) / (
+            len(positives) * len(negatives)
+        )
+    else:
+        auc = 0.5
+
+    return {
+        "direction_accuracy_prob": accuracy,
+        "direction_base_rate": base_rate,
+        "brier_score": brier,
+        "auc": float(auc),
+    }
+
+
+def probability_gated_backtest(
+    probability_up: np.ndarray,
+    actual_simple_return: np.ndarray,
+    *,
+    cost_rate: float = 0.001,
+    entry_threshold: float = 0.55,
+    exit_threshold: float = 0.45,
+) -> tuple[dict[str, float], np.ndarray, np.ndarray, np.ndarray]:
+    """Long-only strategy driven by the direction-probability head.
+
+    Hysteresis (enter above entry_threshold, exit below exit_threshold) keeps
+    the position through low-confidence bars instead of flip-flopping, which
+    is what usually kills hourly strategies once costs are charged.
+    """
+    prob = np.asarray(probability_up, dtype=np.float64)
+    actual = np.asarray(actual_simple_return, dtype=np.float64)
+    if prob.shape != actual.shape:
+        raise ValueError("probability and actual arrays must have identical shapes")
+    if not 0.0 <= exit_threshold <= entry_threshold <= 1.0:
+        raise ValueError("thresholds must satisfy 0 <= exit_threshold <= entry_threshold <= 1")
+    if cost_rate < 0.0:
+        raise ValueError("cost_rate must be non-negative")
+
+    positions = np.zeros(len(prob), dtype=np.float64)
+    turnovers = np.zeros(len(prob), dtype=np.float64)
+    strategy_returns = np.zeros(len(prob), dtype=np.float64)
+    previous_position = 0.0
+
+    for idx, p in enumerate(prob):
+        if previous_position == 0.0:
+            position = 1.0 if p > entry_threshold else 0.0
+        else:
+            position = 0.0 if p < exit_threshold else 1.0
+
+        turnover = abs(position - previous_position)
+        strategy_returns[idx] = position * actual[idx] - cost_rate * turnover
+        positions[idx] = position
+        turnovers[idx] = turnover
+        previous_position = position
+
+    return _performance_metrics(strategy_returns, positions, turnovers), strategy_returns, positions, turnovers
