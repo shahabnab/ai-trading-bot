@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from backend.ml.features import HOUR_MS, build_feature_dataset
 
 
-def _rows(count: int = 260) -> list[dict[str, object]]:
+def _rows(count: int = 500) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     close = 100.0
     for index in range(count):
@@ -46,3 +48,23 @@ def test_sentiment_features_are_opt_in() -> None:
     base = build_feature_dataset(_rows(), include_sentiment=False)
     with_sentiment = build_feature_dataset(_rows(), include_sentiment=True)
     assert with_sentiment.X.shape[1] == base.X.shape[1] + 5
+
+
+def test_missing_hour_resets_time_dependent_feature_warmup() -> None:
+    rows = _rows()
+    missing_timestamp = 260 * HOUR_MS
+    rows = [row for row in rows if row["timestamp"] != missing_timestamp]
+
+    dataset = build_feature_dataset(rows)
+    post_gap = dataset.timestamps[dataset.timestamps > missing_timestamp]
+
+    assert len(post_gap) > 0
+    assert int(post_gap[0]) >= missing_timestamp + 169 * HOUR_MS
+
+
+def test_duplicate_timestamps_fail_closed() -> None:
+    rows = _rows()
+    rows.insert(10, dict(rows[10]))
+
+    with pytest.raises(ValueError, match="strictly increasing and unique"):
+        build_feature_dataset(rows)
