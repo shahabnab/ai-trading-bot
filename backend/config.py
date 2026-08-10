@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     paper_slippage_bps: Decimal = Field(default=Decimal("5"), alias="PAPER_SLIPPAGE_BPS")
     paper_min_confidence: float = Field(default=0.55, alias="PAPER_MIN_CONFIDENCE")
     paper_max_order_fraction: Decimal = Field(default=Decimal("0.10"), alias="PAPER_MAX_ORDER_FRACTION")
+    paper_max_symbol_exposure_fraction: Decimal = Field(
+        default=Decimal("0.20"), alias="PAPER_MAX_SYMBOL_EXPOSURE_FRACTION"
+    )
+    paper_max_total_exposure_fraction: Decimal = Field(
+        default=Decimal("0.50"), alias="PAPER_MAX_TOTAL_EXPOSURE_FRACTION"
+    )
+    paper_max_daily_drawdown_fraction: Decimal = Field(
+        default=Decimal("0.05"), alias="PAPER_MAX_DAILY_DRAWDOWN_FRACTION"
+    )
     paper_db_path: str = Field(default="data/paper_trading.sqlite3", alias="PAPER_DB_PATH")
 
     model_registry_path: str = Field(default="state/model_registry", alias="MODEL_REGISTRY_PATH")
@@ -62,8 +71,21 @@ class Settings(BaseSettings):
             raise RuntimeError("PAPER_SLIPPAGE_BPS cannot be negative.")
         if not 0 <= self.paper_min_confidence <= 1:
             raise RuntimeError("PAPER_MIN_CONFIDENCE must be between 0 and 1.")
-        if not Decimal("0") < self.paper_max_order_fraction <= Decimal("1"):
-            raise RuntimeError("PAPER_MAX_ORDER_FRACTION must be in (0, 1].")
+        exposure_limits = (
+            self.paper_max_order_fraction,
+            self.paper_max_symbol_exposure_fraction,
+            self.paper_max_total_exposure_fraction,
+        )
+        if any(not Decimal("0") < value <= Decimal("1") for value in exposure_limits):
+            raise RuntimeError("Paper exposure fractions must be in (0, 1].")
+        if not (
+            self.paper_max_order_fraction
+            <= self.paper_max_symbol_exposure_fraction
+            <= self.paper_max_total_exposure_fraction
+        ):
+            raise RuntimeError("Paper exposure limits must satisfy order <= symbol <= total.")
+        if not Decimal("0") < self.paper_max_daily_drawdown_fraction <= Decimal("1"):
+            raise RuntimeError("PAPER_MAX_DAILY_DRAWDOWN_FRACTION must be in (0, 1].")
 
 
 settings = Settings()
