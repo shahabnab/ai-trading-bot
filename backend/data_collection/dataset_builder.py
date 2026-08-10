@@ -13,7 +13,9 @@ DEFAULT_NEWS_FILE = Path("data/raw/text/alpha_vantage/btc_news.jsonl")
 DEFAULT_FNG_FILE = Path("data/raw/sentiment/alternative_me/fear_greed.jsonl")
 DEFAULT_OUTPUT = Path("data/processed/training/btc_hourly.jsonl")
 
-HOUR_MS = 60 * 60 * 1000
+MINUTE_MS = 60 * 1000
+HOUR_MS = 60 * MINUTE_MS
+DEFAULT_MIN_CANDLES_PER_HOUR = 60
 
 
 def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
@@ -47,26 +49,38 @@ def _int(value: object, default: int = 0) -> int:
         return default
 
 
-def _aggregate_market(market_file: Path) -> list[dict[str, Any]]:
-    grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+def _aggregate_market(
+    market_file: Path,
+    *,
+    min_candles_per_hour: int = DEFAULT_MIN_CANDLES_PER_HOUR,
+) -> list[dict[str, Any]]:
+    if not 1 <= min_candles_per_hour <= 60:
+        raise ValueError("min_candles_per_hour must be between 1 and 60")
 
+    grouped: dict[int, dict[int, dict[str, Any]]] = defaultdict(dict)
     for candle in _read_jsonl(market_file):
         timestamp = _int(candle.get("open_time"), -1)
         if timestamp < 0:
             continue
         hour = timestamp // HOUR_MS * HOUR_MS
-        grouped[hour].append(candle)
+        grouped[hour][timestamp] = candle
 
     hourly: list[dict[str, Any]] = []
-
     for hour in sorted(grouped):
-        candles = sorted(grouped[hour], key=lambda item: _int(item.get("open_time")))
-        if not candles:
+        by_timestamp = grouped[hour]
+        candles = [by_timestamp[key] for key in sorted(by_timestamp)]
+        valid_minute_slots = {
+            timestamp
+            for timestamp in by_timestamp
+            if hour <= timestamp < hour + HOUR_MS
+            and (timestamp - hour) % MINUTE_MS == 0
+        }
+        candle_count = len(valid_minute_slots)
+        if candle_count < min_candles_per_hour:
             continue
 
         quote_volume = sum(_float(item.get("quote_volume")) for item in candles)
         taker_buy_quote = sum(_float(item.get("taker_buy_quote_volume")) for item in candles)
-
         hourly.append(
             {
                 "timestamp": hour + HOUR_MS,
@@ -87,7 +101,8 @@ def _aggregate_market(market_file: Path) -> list[dict[str, Any]]:
                 "taker_buy_quote_ratio": (
                     taker_buy_quote / quote_volume if quote_volume > 0 else 0.0
                 ),
-                "minute_count": len(candles),
+                "candle_count": candle_count,
+                "minute_count": candle_count,
             }
         )
 
@@ -211,45 +226,48 @@ def _attach_context(
 
 
 def _add_market_features_and_targets(hourly: list[dict[str, Any]]) -> None:
-    closes = [_float(row["close"]) for row in hourly]
+    rows_by_timestamp = {_int(row["timestamp"]): row for row in hourly}
 
-    one_hour_returns: list[float | None] = []
-    for index, close in enumerate(closes):
-        if index == 0 or closes[index - 1] == 0:
-            one_hour_returns.append(None)
-        else:
-            one_hour_returns.append(close / closes[index - 1] - 1.0)
-
-    for index, row in enumerate(hourly):
+    for row in hourly:
+        timestamp = _int(row["timestamp"])
         open_price = _float(row["open"])
         high = _float(row["high"])
         low = _float(row["low"])
-        close = closes[index]
+        close = _float(row["close"])
 
-        row["return_1h"] = one_hour_returns[index]
+        previous = rows_by_timestamp.get(timestamp - HOUR_MS)
+        previous_close = _float(previous["close"]) if previous is not None else 0.0
+        row["return_1h"] = close / previous_close - 1.0 if previous_close else None
         row["range_pct"] = (high - low) / open_price if open_price else None
 
         for lookback in (4, 24):
-            if index >= lookback and closes[index - lookback] != 0:
-                row[f"return_{lookback}h"] = close / closes[index - lookback] - 1.0
-            else:
-                row[f"return_{lookback}h"] = None
+            previous = rows_by_timestamp.get(timestamp - lookback * HOUR_MS)
+            previous_close = _float(previous["close"]) if previous is not None else 0.0
+            row[f"return_{lookback}h"] = (
+                close / previous_close - 1.0 if previous_close else None
+            )
 
-        recent_returns = [
-            value
-            for value in one_hour_returns[max(0, index - 23) : index + 1]
-            if value is not None
-        ]
+        recent_returns: list[float] = []
+        complete_window = True
+        for offset in range(24):
+            current = rows_by_timestamp.get(timestamp - offset * HOUR_MS)
+            previous = rows_by_timestamp.get(timestamp - (offset + 1) * HOUR_MS)
+            previous_close = _float(previous["close"]) if previous is not None else 0.0
+            if current is None or previous is None or previous_close == 0.0:
+                complete_window = False
+                break
+            recent_returns.append(_float(current["close"]) / previous_close - 1.0)
         row["volatility_24h"] = (
-            statistics.pstdev(recent_returns) if len(recent_returns) >= 2 else None
+            statistics.pstdev(recent_returns)
+            if complete_window and len(recent_returns) >= 2
+            else None
         )
 
         for horizon in (1, 4, 24):
-            future_index = index + horizon
-            if future_index < len(closes) and close != 0:
-                row[f"target_return_{horizon}h"] = closes[future_index] / close - 1.0
-            else:
-                row[f"target_return_{horizon}h"] = None
+            future = rows_by_timestamp.get(timestamp + horizon * HOUR_MS)
+            row[f"target_return_{horizon}h"] = (
+                _float(future["close"]) / close - 1.0 if future is not None and close else None
+            )
 
 
 def build_hourly_training_dataset(
@@ -258,13 +276,14 @@ def build_hourly_training_dataset(
     news_file: Path = DEFAULT_NEWS_FILE,
     fng_file: Path = DEFAULT_FNG_FILE,
     output_file: Path = DEFAULT_OUTPUT,
+    min_candles_per_hour: int = DEFAULT_MIN_CANDLES_PER_HOUR,
 ) -> Path:
     if not market_file.exists():
         raise FileNotFoundError(
             f"Market history not found: {market_file}. Run the historical backfill first."
         )
 
-    hourly = _aggregate_market(market_file)
+    hourly = _aggregate_market(market_file, min_candles_per_hour=min_candles_per_hour)
     news_by_hour = _aggregate_news(news_file)
     fear_greed = _load_fear_greed(fng_file)
 
@@ -277,6 +296,7 @@ def build_hourly_training_dataset(
             handle.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
 
     print(f"Hourly training rows: {len(hourly):,}")
+    print(f"Minimum 1m candles per hourly bar: {min_candles_per_hour}")
     print(f"Market file: {market_file}")
     print(f"News file present: {news_file.exists()}")
     print(f"Fear & Greed file present: {fng_file.exists()}")
@@ -292,6 +312,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--news-file", type=Path, default=DEFAULT_NEWS_FILE)
     parser.add_argument("--fng-file", type=Path, default=DEFAULT_FNG_FILE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--min-candles-per-hour",
+        type=int,
+        default=DEFAULT_MIN_CANDLES_PER_HOUR,
+        help="Drop hours with fewer unique 1m candles than this threshold (default: 60).",
+    )
     return parser.parse_args()
 
 
@@ -302,6 +328,7 @@ def main() -> None:
         news_file=args.news_file,
         fng_file=args.fng_file,
         output_file=args.output,
+        min_candles_per_hour=args.min_candles_per_hour,
     )
 
 
