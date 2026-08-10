@@ -9,7 +9,7 @@ from typing import Any, Iterable
 import numpy as np
 
 
-FEATURE_VERSION = "btc-hourly-tech-v1"
+FEATURE_VERSION = "btc-hourly-tech-v2-gap-safe"
 HOUR_MS = 60 * 60 * 1000
 
 BASE_FEATURE_NAMES = [
@@ -193,6 +193,18 @@ def _safe_divide(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
     return out
 
 
+def _continuous_slices(timestamps: np.ndarray) -> list[slice]:
+    if len(timestamps) == 0:
+        return []
+    diffs = np.diff(timestamps)
+    if np.any(diffs <= 0):
+        raise ValueError("timestamps must be strictly increasing and unique")
+    breaks = np.flatnonzero(diffs != HOUR_MS) + 1
+    starts = np.concatenate(([0], breaks))
+    ends = np.concatenate((breaks, [len(timestamps)]))
+    return [slice(int(start), int(end)) for start, end in zip(starts, ends, strict=True)]
+
+
 def build_feature_dataset(
     rows: Iterable[dict[str, Any]],
     *,
@@ -203,6 +215,7 @@ def build_feature_dataset(
         raise ValueError("training dataset is empty")
 
     timestamps = np.asarray([int(row["timestamp"]) for row in ordered], dtype=np.int64)
+    segments = _continuous_slices(timestamps)
     opens = np.asarray([_float(row.get("open")) for row in ordered], dtype=np.float64)
     highs = np.asarray([_float(row.get("high")) for row in ordered], dtype=np.float64)
     lows = np.asarray([_float(row.get("low")) for row in ordered], dtype=np.float64)
@@ -218,52 +231,89 @@ def build_feature_dataset(
         [_float(row.get("taker_buy_quote_ratio"), 0.0) for row in ordered], dtype=np.float64
     )
 
-    log_return_1h = np.full(len(closes), np.nan, dtype=np.float64)
-    valid_prev = (closes[:-1] > 0.0) & (closes[1:] > 0.0)
-    log_return_1h[1:][valid_prev] = np.log(closes[1:][valid_prev] / closes[:-1][valid_prev])
+    n = len(closes)
+    log_return_1h = np.full(n, np.nan, dtype=np.float64)
+    returns = {h: np.full(n, np.nan, dtype=np.float64) for h in (2, 3, 6, 12, 24, 168)}
+    realized_vol = {h: np.full(n, np.nan, dtype=np.float64) for h in (6, 24, 168)}
 
-    returns = {h: _horizon_return(closes, h) for h in (2, 3, 6, 12, 24, 168)}
-    realized_vol = {h: _rolling_std(log_return_1h, h) for h in (6, 24, 168)}
+    log_volume = np.log1p(volumes)
+    log_quote_volume = np.log1p(quote_volumes)
+    volume_z_24 = np.full(n, np.nan, dtype=np.float64)
+    quote_z_24 = np.full(n, np.nan, dtype=np.float64)
+
+    ema = {span: np.full(n, np.nan, dtype=np.float64) for span in (10, 20, 50, 100, 200)}
+    ema20_slope_3h = np.full(n, np.nan, dtype=np.float64)
+    ema50_slope_6h = np.full(n, np.nan, dtype=np.float64)
+    rsi14 = np.full(n, np.nan, dtype=np.float64)
+    macd_norm = np.full(n, np.nan, dtype=np.float64)
+    macd_signal_norm = np.full(n, np.nan, dtype=np.float64)
+    macd_hist_norm = np.full(n, np.nan, dtype=np.float64)
+    atr14_norm = np.full(n, np.nan, dtype=np.float64)
+    bb_position = np.full(n, np.nan, dtype=np.float64)
+    bb_width = np.full(n, np.nan, dtype=np.float64)
+
+    for segment in segments:
+        seg_close = closes[segment]
+        seg_high = highs[segment]
+        seg_low = lows[segment]
+        seg_log_volume = log_volume[segment]
+        seg_log_quote_volume = log_quote_volume[segment]
+
+        seg_log_return = np.full(len(seg_close), np.nan, dtype=np.float64)
+        if len(seg_close) > 1:
+            valid_prev = (seg_close[:-1] > 0.0) & (seg_close[1:] > 0.0)
+            seg_log_return[1:][valid_prev] = np.log(seg_close[1:][valid_prev] / seg_close[:-1][valid_prev])
+        log_return_1h[segment] = seg_log_return
+
+        for horizon in returns:
+            returns[horizon][segment] = _horizon_return(seg_close, horizon)
+        for horizon in realized_vol:
+            realized_vol[horizon][segment] = _rolling_std(seg_log_return, horizon)
+
+        volume_mean_24, volume_std_24 = _rolling_mean_std(seg_log_volume, 24)
+        quote_mean_24, quote_std_24 = _rolling_mean_std(seg_log_quote_volume, 24)
+        volume_z_24[segment] = _safe_divide(seg_log_volume - volume_mean_24, volume_std_24)
+        quote_z_24[segment] = _safe_divide(seg_log_quote_volume - quote_mean_24, quote_std_24)
+
+        local_ema = {span: _ema(seg_close, span) for span in ema}
+        for span in ema:
+            ema[span][segment] = local_ema[span]
+
+        local_ema20_slope = np.full(len(seg_close), np.nan, dtype=np.float64)
+        local_ema50_slope = np.full(len(seg_close), np.nan, dtype=np.float64)
+        if len(seg_close) > 3:
+            local_ema20_slope[3:] = _safe_divide(local_ema[20][3:], local_ema[20][:-3]) - 1.0
+        if len(seg_close) > 6:
+            local_ema50_slope[6:] = _safe_divide(local_ema[50][6:], local_ema[50][:-6]) - 1.0
+        ema20_slope_3h[segment] = local_ema20_slope
+        ema50_slope_6h[segment] = local_ema50_slope
+
+        rsi14[segment] = _rsi_wilder(seg_close, 14) / 100.0
+        ema12 = _ema(seg_close, 12)
+        ema26 = _ema(seg_close, 26)
+        macd = ema12 - ema26
+        macd_signal = _ema(macd, 9)
+        macd_hist = macd - macd_signal
+        macd_norm[segment] = _safe_divide(macd, seg_close)
+        macd_signal_norm[segment] = _safe_divide(macd_signal, seg_close)
+        macd_hist_norm[segment] = _safe_divide(macd_hist, seg_close)
+
+        atr14 = _atr_wilder(seg_high, seg_low, seg_close, 14)
+        atr14_norm[segment] = _safe_divide(atr14, seg_close)
+
+        bb_mean_20, bb_std_20 = _rolling_mean_std(seg_close, 20)
+        bb_position[segment] = _safe_divide(seg_close - bb_mean_20, 2.0 * bb_std_20)
+        bb_width[segment] = _safe_divide(4.0 * bb_std_20, bb_mean_20)
 
     candle_body_pct = _safe_divide(closes - opens, opens)
     high_low_pct = _safe_divide(highs - lows, opens)
     close_location = _safe_divide(closes - lows, highs - lows)
     close_location = close_location * 2.0 - 1.0
 
-    log_volume = np.log1p(volumes)
-    log_quote_volume = np.log1p(quote_volumes)
-    volume_mean_24, volume_std_24 = _rolling_mean_std(log_volume, 24)
-    quote_mean_24, quote_std_24 = _rolling_mean_std(log_quote_volume, 24)
-    volume_z_24 = _safe_divide(log_volume - volume_mean_24, volume_std_24)
-    quote_z_24 = _safe_divide(log_quote_volume - quote_mean_24, quote_std_24)
-
-    ema = {span: _ema(closes, span) for span in (10, 20, 50, 100, 200)}
     ema_gap = {span: _safe_divide(closes, values) - 1.0 for span, values in ema.items()}
 
-    ema20_slope_3h = np.full(len(closes), np.nan, dtype=np.float64)
-    ema50_slope_6h = np.full(len(closes), np.nan, dtype=np.float64)
-    ema20_slope_3h[3:] = _safe_divide(ema[20][3:], ema[20][:-3]) - 1.0
-    ema50_slope_6h[6:] = _safe_divide(ema[50][6:], ema[50][:-6]) - 1.0
-
-    rsi14 = _rsi_wilder(closes, 14) / 100.0
-    ema12 = _ema(closes, 12)
-    ema26 = _ema(closes, 26)
-    macd = ema12 - ema26
-    macd_signal = _ema(macd, 9)
-    macd_hist = macd - macd_signal
-    macd_norm = _safe_divide(macd, closes)
-    macd_signal_norm = _safe_divide(macd_signal, closes)
-    macd_hist_norm = _safe_divide(macd_hist, closes)
-
-    atr14 = _atr_wilder(highs, lows, closes, 14)
-    atr14_norm = _safe_divide(atr14, closes)
-
-    bb_mean_20, bb_std_20 = _rolling_mean_std(closes, 20)
-    bb_position = _safe_divide(closes - bb_mean_20, 2.0 * bb_std_20)
-    bb_width = _safe_divide(4.0 * bb_std_20, bb_mean_20)
-
     hours = ((timestamps // HOUR_MS) % 24).astype(np.float64)
-    days = ((timestamps // (24 * HOUR_MS) + 4) % 7).astype(np.float64)  # Unix epoch was Thursday.
+    days = ((timestamps // (24 * HOUR_MS) + 4) % 7).astype(np.float64)
     hour_angle = 2.0 * np.pi * hours / 24.0
     day_angle = 2.0 * np.pi * days / 7.0
 
