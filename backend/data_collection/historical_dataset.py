@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import calendar
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 from backend.config import settings
 from backend.data_collection.binance_history import backfill_binance_klines
@@ -117,7 +118,15 @@ async def main() -> None:
     print()
 
     print("[4/4] Build hourly training dataset")
-    build_hourly_training_dataset()
+    market_file = Path("data/raw/market/binance") / args.symbol.upper() / args.interval / "candles.jsonl"
+    output_file = (
+        Path("data/processed/training")
+        / f"{args.symbol.lower()}_{args.interval}_hourly.jsonl"
+    )
+    build_hourly_training_dataset(
+        market_file=market_file,
+        output_file=output_file,
+    )
     print()
     print("Done.")
 
