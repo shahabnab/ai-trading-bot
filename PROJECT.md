@@ -74,6 +74,8 @@ No shortcuts around the risk manager. CoinEx order endpoints are intentionally n
 - [x] XGBoost ML baseline.
 - [x] LSTM sequence baseline.
 - [x] Dashboard visualization of completed OOS prediction artifacts.
+- [x] Gap-safe technical feature engineering across missing-hour segments.
+- [x] Persisted XGBoost fold models match the early-stopping best model used for OOS evaluation.
 - [ ] Forward/live model inference recorder.
 - [ ] Automated model retraining/promotion loop.
 - [ ] Automated strategy loop; do not enable until risk-state controls are exercised in integration tests.
@@ -104,6 +106,9 @@ max order fraction <= max symbol fraction <= max total exposure fraction
 - The default hourly training bar requires 60 unique, minute-aligned 1-minute candles.
 - Incomplete hours are omitted from the processed training dataset.
 - Return and target horizons use exact UTC timestamp alignment, so a gap cannot be mislabeled as a shorter horizon.
+- Technical ML features are computed only inside strictly continuous hourly segments. A missing hour resets lagged returns, rolling statistics, EMA-derived state, RSI, MACD, ATR, Bollinger state and related warm-up; rows must not be treated as adjacent across a gap.
+- ML feature timestamps must be strictly increasing and unique; duplicates fail closed.
+- The gap-safe technical feature definition is versioned as `btc-hourly-tech-v2-gap-safe` so results are not mixed with the earlier feature implementation.
 - Rebuild processed datasets whenever aggregation or labeling rules change.
 
 ## 8. ML evaluation policy
@@ -119,6 +124,11 @@ Required reporting/ablations as the research phase expands:
 - Per-fold XGBoost feature-importance stability, not only aggregate importance, to detect unstable correlated predictors and possible noise memorization.
 - Test windows are never used for tuning, threshold selection, feature selection or model promotion.
 - Completed walk-forward artifacts are OOS history, not live predictions.
+- Walk-forward timestamps must be strictly increasing and unique; OOS test windows must not overlap.
+- Maximum drawdown is measured from the initial equity point of `1.0`, including an immediate first-period loss.
+- Sortino uses downside deviation relative to a zero minimum acceptable return (`MAR=0`), retaining non-negative observations as zero downside.
+- Strategy `trade_count` means entry count; `round_trip_count` means completed exits; `position_change_count` records all non-zero position changes.
+- XGBoost early stopping must persist the pruned best booster itself. A serialized fold model must contain exactly `best_iteration + 1` boosted rounds so reloaded inference matches the model evaluated OOS.
 
 ## 9. Security rules
 
