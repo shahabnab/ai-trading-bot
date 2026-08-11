@@ -10,6 +10,8 @@ SENSITIVITY_TRIALS="${SENSITIVITY_TRIALS:-4}"
 EPOCHS="${EPOCHS:-80}"
 FINAL_EPOCHS="${FINAL_EPOCHS:-100}"
 BOOTSTRAP_SAMPLES="${BOOTSTRAP_SAMPLES:-3000}"
+RESUME_RUN_DIR="${RESUME_RUN_DIR:-}"
+NO_REPORT_ZIP="${NO_REPORT_ZIP:-0}"
 
 if [[ -x .venv-training/bin/python ]]; then
   PYTHON_BIN="${PYTHON_BIN:-.venv-training/bin/python}"
@@ -50,11 +52,23 @@ sha256sum "$DATASET"
 echo "Rows: $(wc -l < "$DATASET")"
 echo
 
-echo "=== RUN V3 MULTI-HOUR RESEARCH ==="
-echo "This is intentionally a large research run. Actual duration depends on fold count and early stopping."
+echo "=== RUN V3 MULTI-HOUR RESEARCH (CHECKPOINTED) ==="
+echo "This is intentionally a large research run. Completed experiments are resumable via summary.json checkpoints."
 echo "Full-context trials=$FULL_TRIALS, ablation trials=$ABLATION_TRIALS, sensitivity trials=$SENSITIVITY_TRIALS, epochs=$EPOCHS"
 
-"$PYTHON_BIN" run_research_experiments_v3.py \
+resume_args=()
+if [[ -n "$RESUME_RUN_DIR" ]]; then
+  resume_args+=(--resume-run-dir "$RESUME_RUN_DIR")
+  echo "Resume directory: $RESUME_RUN_DIR"
+fi
+zip_args=()
+if [[ "$NO_REPORT_ZIP" == "1" ]]; then
+  zip_args+=(--no-report-zip)
+fi
+
+"$PYTHON_BIN" run_research_experiments_v3_checkpointed.py \
+  "${resume_args[@]}" \
+  "${zip_args[@]}" \
   --dataset "$DATASET" \
   --horizons 1,3,6,12 \
   --feature-sets technical technical_micro full_context \
@@ -82,13 +96,25 @@ echo "Full-context trials=$FULL_TRIALS, ablation trials=$ABLATION_TRIALS, sensit
   --starting-capital-eur 1000 \
   --epoch-verbose
 
-latest_zip="$(ls -1t artifacts/ml/research_v3/*_research_report.zip | head -n1)"
+if [[ -n "$RESUME_RUN_DIR" ]]; then
+  RUN_DIR="$RESUME_RUN_DIR"
+else
+  RUN_DIR="$(ls -1dt artifacts/ml/research_v3/20*/ 2>/dev/null | head -n1)"
+fi
 
-if [[ "$PUBLISH_TO_GITHUB" == "1" ]]; then
+latest_zip=""
+if [[ "$NO_REPORT_ZIP" != "1" ]]; then
+  latest_zip="$(ls -1t artifacts/ml/research_v3/*_research_report.zip 2>/dev/null | head -n1 || true)"
+fi
+
+if [[ "$PUBLISH_TO_GITHUB" == "1" && -n "$latest_zip" ]]; then
   echo
   echo "=== PERSIST V3 ARTIFACTS TO GITHUB ==="
   bash publish_research_v3_release.sh "$latest_zip"
+elif [[ "$PUBLISH_TO_GITHUB" == "1" ]]; then
+  echo "No report ZIP exists (NO_REPORT_ZIP=1 or ZIP creation skipped); GitHub publishing skipped."
 else
   echo "PUBLISH_TO_GITHUB=0: publishing skipped."
-  echo "Research bundle: $latest_zip"
 fi
+
+echo "Run directory: $RUN_DIR"
