@@ -4,5 +4,6 @@ pydantic-settings>=2.10,<3.0
 pytest>=8.4,<9.0
 httpx>=0.28,<1.0
 numpy>=2.0,<3.0
+scikit-learn>=1.7,<2.0
 xgboost>=3.0,<4.0
 tensorflow>=2.21,<2.22
