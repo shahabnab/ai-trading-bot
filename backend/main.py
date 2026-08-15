@@ -13,10 +13,12 @@ from backend.market import CoinExMarketClient, MarketDataError
 from backend.ml import ModelRegistry, ModelRegistryError
 from backend.ml.dashboard import collect_prediction_history
 from backend.paper import PaperBroker, PaperBrokerError, PaperStore
+from backend.paper.model_api import router as model_paper_router
 from backend.risk.manager import RiskManager, TradeProposal
 
 
-app = FastAPI(title=settings.app_name, version="0.4.0")
+app = FastAPI(title=settings.app_name, version="0.5.0")
+app.include_router(model_paper_router)
 
 market_client = CoinExMarketClient()
 paper_store = PaperStore(settings.paper_db_path, settings.paper_initial_balance_usdt)
