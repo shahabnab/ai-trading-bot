@@ -24,6 +24,7 @@ User=root
 WorkingDirectory=$ROOT
 ExecStart=/bin/bash -lc '$PYTHON $V3_RUNNER; V3_STATUS=\$?; $PYTHON $TB_RUNNER; TB_STATUS=\$?; if [ \$V3_STATUS -ne 0 ] && [ \$TB_STATUS -ne 0 ]; then exit 2; fi'
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$ROOT
 TimeoutStartSec=45min
 Nice=5
 EOF
