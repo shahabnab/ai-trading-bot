@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AutoRefresh from "../components/AutoRefresh";
 import "./globals.css";
 import "./dashboard.css";
 
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AutoRefresh intervalMs={30_000} />
+        {children}
+      </body>
     </html>
   );
 }
