@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="${1:-/opt/ai-trading-bot}"
 PYTHON="$ROOT/.venv/bin/python"
-RUNNER="$ROOT/scripts/run_v3_forward_once.py"
+RUNNER="$ROOT/scripts/run_all_forward_once.py"
 SERVICE="/etc/systemd/system/ai-trading-v3-forward.service"
 TIMER="/etc/systemd/system/ai-trading-v3-forward.timer"
 
@@ -18,7 +18,7 @@ fi
 
 cat > "$SERVICE" <<EOF
 [Unit]
-Description=AI Trading Bot frozen V3 hourly paper inference
+Description=AI Trading Bot hourly V3 + Trader-Brain paper inference
 Wants=network-online.target
 After=network-online.target ai-trading-backend.service
 
@@ -37,7 +37,7 @@ EOF
 
 cat > "$TIMER" <<'EOF'
 [Unit]
-Description=Run frozen V3 paper inference after each completed UTC hour
+Description=Run all AI trading paper strategies after each completed UTC hour
 
 [Timer]
 OnCalendar=*-*-* *:05:00 UTC
@@ -53,5 +53,5 @@ EOF
 systemctl daemon-reload
 systemctl enable --now ai-trading-v3-forward.timer
 
-echo "Installed ai-trading-v3-forward.timer"
+echo "Installed ai-trading-v3-forward.timer (Frozen V3 + Trader-Brain)"
 systemctl list-timers ai-trading-v3-forward.timer --no-pager
