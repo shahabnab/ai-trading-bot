@@ -1,9 +1,13 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
 import { NextResponse } from "next/server";
 
 import {
   getMarketKlines,
   getMarketQuote,
-  getModelPredictionHistory,
+  getPaperModels,
+  getPaperModelTrades,
 } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
@@ -27,126 +31,85 @@ function finiteNumber(value: unknown): number | null {
 
 function sanitizeMarket(market: unknown): unknown {
   if (!isRecord(market)) return market;
-
   const rawCandles = Array.isArray(market.candles) ? market.candles : [];
   const byTimestamp = new Map<number, JsonRecord>();
 
   for (const raw of rawCandles) {
     if (!isRecord(raw)) continue;
-
     const createdAt = normalizeEpochMs(raw.created_at);
     const open = finiteNumber(raw.open);
     const close = finiteNumber(raw.close);
     const high = finiteNumber(raw.high);
     const low = finiteNumber(raw.low);
-
-    if (
-      createdAt === null ||
-      open === null ||
-      close === null ||
-      high === null ||
-      low === null ||
-      open <= 0 ||
-      close <= 0 ||
-      high <= 0 ||
-      low <= 0
-    ) {
-      continue;
-    }
-
-    byTimestamp.set(createdAt, {
-      ...raw,
-      created_at: createdAt,
-      open: String(open),
-      close: String(close),
-      high: String(high),
-      low: String(low),
-    });
+    if (createdAt === null || open === null || close === null || high === null || low === null || open <= 0 || close <= 0 || high <= 0 || low <= 0) continue;
+    byTimestamp.set(createdAt, { ...raw, created_at: createdAt, open: String(open), close: String(close), high: String(high), low: String(low) });
   }
 
   return {
     ...market,
-    candles: [...byTimestamp.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, candle]) => candle),
+    candles: [...byTimestamp.entries()].sort((a, b) => a[0] - b[0]).map(([, candle]) => candle),
   };
 }
 
-function sanitizePredictionSeries(series: unknown): unknown {
-  if (!isRecord(series)) return series;
+function repoRoot(): string {
+  return path.resolve(process.cwd(), "..");
+}
 
-  const rawPredictions = Array.isArray(series.predictions) ? series.predictions : [];
-  const byTarget = new Map<number, JsonRecord>();
-
-  for (const raw of rawPredictions) {
-    if (!isRecord(raw)) continue;
-
-    const targetTimestamp = normalizeEpochMs(raw.target_timestamp);
-    const sourceTimestamp = normalizeEpochMs(raw.source_timestamp);
-    const predictedPrice = finiteNumber(raw.predicted_price);
-    const predictedLogReturn = finiteNumber(raw.predicted_log_return);
-    const errorLogReturn = finiteNumber(raw.error_log_return);
-
-    if (
-      targetTimestamp === null ||
-      sourceTimestamp === null ||
-      predictedPrice === null ||
-      predictedLogReturn === null ||
-      errorLogReturn === null
-    ) {
-      continue;
+function loadForwardRecords(limit = 720): JsonRecord[] {
+  const file = path.join(repoRoot(), "state", "forward_v3", "predictions.jsonl");
+  if (!existsSync(file)) return [];
+  try {
+    const rows: JsonRecord[] = [];
+    for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        if (isRecord(parsed)) rows.push(parsed);
+      } catch {
+        // Ignore a partially-written/corrupt telemetry line and keep the dashboard alive.
+      }
     }
-
-    byTarget.set(targetTimestamp, {
-      ...raw,
-      source_timestamp: sourceTimestamp,
-      target_timestamp: targetTimestamp,
-      predicted_price: predictedPrice,
-      predicted_log_return: predictedLogReturn,
-      error_log_return: errorLogReturn,
-    });
+    rows.sort((a, b) => Number(a.feature_timestamp ?? 0) - Number(b.feature_timestamp ?? 0));
+    return rows.slice(-limit * 2);
+  } catch {
+    return [];
   }
-
-  return {
-    ...series,
-    predictions: [...byTarget.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, point]) => point),
-  };
 }
 
-function sanitizePredictions(predictions: unknown): unknown {
-  if (!isRecord(predictions) || !isRecord(predictions.models)) return predictions;
-
-  const models = predictions.models;
-  return {
-    ...predictions,
-    models: {
-      ...models,
-      xgboost: sanitizePredictionSeries(models.xgboost),
-      lstm: sanitizePredictionSeries(models.lstm),
-    },
-  };
+function artifactReady(modelId: string): boolean {
+  const root = path.join(repoRoot(), "artifacts", "ml", "forward_deployment", "v3-paper", modelId);
+  return ["model.keras", "manifest.json", "standardizer.json"].every((name) => existsSync(path.join(root, name)));
 }
 
 export async function GET() {
-  const [quote, market, predictions] = await Promise.all([
+  const [quote, market, paperModels] = await Promise.all([
     getMarketQuote("BTCUSDT"),
     getMarketKlines("BTCUSDT", "1hour", 720),
-    getModelPredictionHistory(720),
+    getPaperModels(),
   ]);
+
+  const records = loadForwardRecords(720);
+  const models = paperModels?.models ?? [];
+  const tradesByModel = await Promise.all(models.map((model) => getPaperModelTrades(model.model_id, 1000)));
+  const forwardModels = models.map((model, index) => ({
+    ...model,
+    artifact_ready: artifactReady(model.model_id),
+    history: records.filter((row) => row.model_id === model.model_id).slice(-720),
+    trades: tradesByModel[index] ?? [],
+  }));
 
   return NextResponse.json(
     {
       generated_at: new Date().toISOString(),
       quote,
       market: sanitizeMarket(market),
-      predictions: sanitizePredictions(predictions),
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store, max-age=0",
+      forward: {
+        mode: "prospective_forward_paper",
+        paper_only: true,
+        real_orders_enabled: false,
+        models: forwardModels,
       },
     },
+    { headers: { "Cache-Control": "no-store, max-age=0" } },
   );
 }
