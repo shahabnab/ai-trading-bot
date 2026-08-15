@@ -16,7 +16,7 @@ from backend.risk.manager import RiskManager, TradeProposal
 
 router = APIRouter(prefix="/api/paper/models", tags=["paper-models"])
 market_client = CoinExMarketClient()
-store = ModelPaperStore(settings.paper_db_path, settings.paper_initial_balance_usdt)
+store = ModelPaperStore(settings.paper_db_path, settings.paper_model_initial_balance_eur_equiv)
 risk_manager = RiskManager(
     min_confidence=settings.paper_min_confidence,
     max_order_fraction=settings.paper_max_order_fraction,
@@ -119,7 +119,7 @@ async def list_model_accounts() -> dict[str, object]:
     models = [await _model_payload(spec) for spec in PAPER_MODELS]
     return {
         "mode": "paper",
-        "starting_capital_eur_equiv_per_model": str(settings.paper_initial_balance_usdt),
+        "starting_capital_eur_equiv_per_model": str(settings.paper_model_initial_balance_eur_equiv),
         "real_orders_enabled": False,
         "models": models,
     }
