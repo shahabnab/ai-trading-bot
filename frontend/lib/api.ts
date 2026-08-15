@@ -100,6 +100,7 @@ export type PaperPosition = {
 
 export type PaperPortfolio = {
   currency: string;
+  ledger_currency?: string;
   initial_cash_usdt: string;
   cash_usdt: string;
   positions_value_usdt: string;
@@ -108,23 +109,26 @@ export type PaperPortfolio = {
   total_pnl_usdt: string;
   total_return: string;
   positions: PaperPosition[];
+  fx_note?: string;
 };
 
 export type PaperDecision = {
   id: number;
+  model_id?: string;
   created_at: string;
   symbol: string;
   signal: string;
   confidence: number | null;
   approved: number;
   reason: string;
-  model_version: string;
+  model_version?: string;
   strategy_version: string;
   market_price: string | null;
 };
 
 export type PaperTrade = {
   id: number;
+  model_id?: string;
   created_at: string;
   symbol: string;
   side: string;
@@ -134,7 +138,7 @@ export type PaperTrade = {
   gross_value_usdt: string;
   fee_usdt: string;
   realized_pnl_usdt: string;
-  model_version: string;
+  model_version?: string;
   strategy_version: string;
   confidence: number | null;
 };
@@ -147,6 +151,32 @@ export type PaperPerformance = {
   win_rate: number | null;
   total_fees_usdt: string;
   realized_pnl_usdt: string;
+};
+
+export type PaperModelAccount = {
+  model_id: string;
+  display_name: string;
+  role: "paper_strategy" | "research_control" | string;
+  target_bps: number;
+  horizon_hours: number;
+  feature_set: string;
+  research_auc: number;
+  research_median_auc: number;
+  research_sharpe_25bps: number;
+  research_return_25bps: number;
+  research_trades: number;
+  research_gate_passed: boolean;
+  portfolio: PaperPortfolio;
+  performance: PaperPerformance;
+  latest_decision: PaperDecision | null;
+  live_status: "paper_running" | "waiting_for_signal" | string;
+};
+
+export type PaperModelsResponse = {
+  mode: string;
+  starting_capital_eur_equiv_per_model: string;
+  real_orders_enabled: boolean;
+  models: PaperModelAccount[];
 };
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -199,4 +229,22 @@ export async function getPaperTrades(limit = 8): Promise<PaperTrade[]> {
 
 export function getPaperPerformance(): Promise<PaperPerformance | null> {
   return safeGet<PaperPerformance>("/api/paper/performance");
+}
+
+export function getPaperModels(): Promise<PaperModelsResponse | null> {
+  return safeGet<PaperModelsResponse>("/api/paper/models");
+}
+
+export async function getPaperModelTrades(modelId: string, limit = 50): Promise<PaperTrade[]> {
+  const result = await safeGet<{ trades: PaperTrade[] }>(
+    `/api/paper/models/${encodeURIComponent(modelId)}/trades?limit=${limit}`,
+  );
+  return result?.trades ?? [];
+}
+
+export async function getPaperModelDecisions(modelId: string, limit = 20): Promise<PaperDecision[]> {
+  const result = await safeGet<{ decisions: PaperDecision[] }>(
+    `/api/paper/models/${encodeURIComponent(modelId)}/decisions?limit=${limit}`,
+  );
+  return result?.decisions ?? [];
 }
