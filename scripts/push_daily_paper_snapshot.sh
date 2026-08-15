@@ -24,13 +24,14 @@ cd "$REPO_ROOT"
 if [[ ! -d "$RESULTS_WORKTREE/.git" && ! -f "$RESULTS_WORKTREE/.git" ]]; then
   rm -rf "$RESULTS_WORKTREE"
   git fetch origin "$RESULTS_BRANCH"
-  git worktree add "$RESULTS_WORKTREE" "origin/$RESULTS_BRANCH"
+  git worktree add -B "$RESULTS_BRANCH" "$RESULTS_WORKTREE" "origin/$RESULTS_BRANCH"
+else
+  git -C "$RESULTS_WORKTREE" fetch origin "$RESULTS_BRANCH"
+  # Preserve any local snapshot commit if a prior push was interrupted. A
+  # normal fast-forward pull is safer than resetting the audit worktree.
+  git -C "$RESULTS_WORKTREE" checkout "$RESULTS_BRANCH"
+  git -C "$RESULTS_WORKTREE" pull --ff-only origin "$RESULTS_BRANCH"
 fi
-
-# Keep the audit worktree synchronized. This branch should only receive snapshot
-# commits, so a fast-forward pull is the safe behavior.
-git -C "$RESULTS_WORKTREE" fetch origin "$RESULTS_BRANCH"
-git -C "$RESULTS_WORKTREE" checkout -B "$RESULTS_BRANCH" "origin/$RESULTS_BRANCH"
 
 "$PYTHON_BIN" "$REPO_ROOT/scripts/export_daily_paper_snapshot.py" \
   --repo-root "$REPO_ROOT" \
