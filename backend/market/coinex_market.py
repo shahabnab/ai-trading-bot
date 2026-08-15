@@ -89,6 +89,24 @@ class CoinExMarketClient:
         except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
             raise MarketDataError("CoinEx returned malformed ticker data") from exc
 
+    @staticmethod
+    def _normalize_timestamp_ms(value: object) -> int | None:
+        """Return an epoch timestamp in milliseconds, or None when invalid.
+
+        CoinEx currently exposes millisecond timestamps, but normalizing here also
+        keeps the dashboard safe if an upstream response arrives in epoch seconds.
+        """
+        try:
+            timestamp = int(value)
+        except (TypeError, ValueError):
+            return None
+
+        if timestamp <= 0:
+            return None
+        if timestamp < 10_000_000_000:
+            timestamp *= 1000
+        return timestamp
+
     async def get_klines(self, symbol: str, period: str = "5min", limit: int = 100) -> list[dict[str, object]]:
         symbol = symbol.upper().strip()
         limit = max(1, min(limit, 1000))
@@ -100,20 +118,37 @@ class CoinExMarketClient:
         if not isinstance(data, list):
             raise MarketDataError("CoinEx returned an unexpected candlestick payload")
 
-        candles: list[dict[str, object]] = []
+        # Lightweight Charts requires strictly ordered, unique timestamps. Build
+        # a timestamp-keyed map so duplicate CoinEx rows cannot crash the client.
+        candles_by_timestamp: dict[int, dict[str, object]] = {}
         for item in data:
             if not isinstance(item, dict):
                 continue
-            candles.append(
-                {
-                    "symbol": str(item.get("market", symbol)),
-                    "created_at": item.get("created_at"),
-                    "open": str(item.get("open", "0")),
-                    "close": str(item.get("close", "0")),
-                    "high": str(item.get("high", "0")),
-                    "low": str(item.get("low", "0")),
-                    "volume": str(item.get("volume", "0")),
-                    "value": str(item.get("value", "0")),
-                }
-            )
-        return candles
+
+            created_at = self._normalize_timestamp_ms(item.get("created_at"))
+            if created_at is None:
+                continue
+
+            try:
+                open_price = Decimal(str(item.get("open", "0")))
+                close_price = Decimal(str(item.get("close", "0")))
+                high_price = Decimal(str(item.get("high", "0")))
+                low_price = Decimal(str(item.get("low", "0")))
+            except (InvalidOperation, TypeError, ValueError):
+                continue
+
+            if any(price <= 0 for price in (open_price, close_price, high_price, low_price)):
+                continue
+
+            candles_by_timestamp[created_at] = {
+                "symbol": str(item.get("market", symbol)),
+                "created_at": created_at,
+                "open": str(open_price),
+                "close": str(close_price),
+                "high": str(high_price),
+                "low": str(low_price),
+                "volume": str(item.get("volume", "0")),
+                "value": str(item.get("value", "0")),
+            }
+
+        return [candles_by_timestamp[timestamp] for timestamp in sorted(candles_by_timestamp)]
