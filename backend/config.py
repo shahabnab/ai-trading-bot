@@ -34,10 +34,12 @@ class Settings(BaseSettings):
     coinex_secret_key: str | None = Field(default=None, alias="COINEX_SECRET_KEY")
     alpha_vantage_api_key: str | None = Field(default=None, alias="ALPHAVANTAGE_API_KEY")
 
-    # The forward paper experiment uses a EUR 1,000-equivalent notional per
-    # model. Execution is still simulated against USDT-quoted BTC markets, so
-    # EUR/USDT FX variation is intentionally not modeled in this phase.
     paper_initial_balance_usdt: Decimal = Field(default=Decimal("1000"), alias="PAPER_INITIAL_BALANCE_USDT")
+    # Dedicated comparison balance so old .env files with a larger legacy
+    # PAPER_INITIAL_BALANCE_USDT cannot accidentally change the forward test.
+    paper_model_initial_balance_eur_equiv: Decimal = Field(
+        default=Decimal("1000"), alias="PAPER_MODEL_INITIAL_BALANCE_EUR_EQUIV"
+    )
     paper_fee_rate: Decimal = Field(default=Decimal("0.002"), alias="PAPER_FEE_RATE")
     paper_slippage_bps: Decimal = Field(default=Decimal("5"), alias="PAPER_SLIPPAGE_BPS")
     paper_min_confidence: float = Field(default=0.55, alias="PAPER_MIN_CONFIDENCE")
@@ -68,6 +70,8 @@ class Settings(BaseSettings):
             )
         if self.paper_initial_balance_usdt <= 0:
             raise RuntimeError("PAPER_INITIAL_BALANCE_USDT must be positive.")
+        if self.paper_model_initial_balance_eur_equiv <= 0:
+            raise RuntimeError("PAPER_MODEL_INITIAL_BALANCE_EUR_EQUIV must be positive.")
         if not Decimal("0") <= self.paper_fee_rate < Decimal("1"):
             raise RuntimeError("PAPER_FEE_RATE must be between 0 and 1.")
         if self.paper_slippage_bps < 0:
