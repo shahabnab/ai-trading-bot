@@ -24,6 +24,7 @@ data/processed/
 artifacts/
 models/checkpoints/
 state/model_registry/
+state/ops/
 logs/ml/
 
 # Notebooks
