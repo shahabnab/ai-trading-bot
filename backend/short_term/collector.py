@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from time import time
@@ -104,6 +104,19 @@ class BucketAccumulator:
         }
 
 
+def accumulator_for_timestamp(
+    timestamp_ms: int,
+    current: BucketAccumulator,
+    previous: BucketAccumulator | None,
+) -> BucketAccumulator | None:
+    """Return the live accumulator that owns a deal timestamp."""
+    if current.bucket_start <= timestamp_ms < current.bucket_start + BUCKET_MS:
+        return current
+    if previous is not None and previous.bucket_start <= timestamp_ms < previous.bucket_start + BUCKET_MS:
+        return previous
+    return None
+
+
 async def run_short_term_collector(
     *,
     symbol: str = "BTCUSDT",
@@ -113,8 +126,9 @@ async def run_short_term_collector(
     """Continuously aggregate public CoinEx trades/depth into 15-minute rows.
 
     Recent trade requests overlap heavily, so deal IDs are deduplicated in
-    memory. Only deals whose timestamps belong to the current bucket are used.
-    A restart therefore cannot rewrite an already-flushed bucket.
+    memory. At a bucket rollover the previous accumulator remains alive for one
+    additional poll. This captures deals from the final few seconds that CoinEx
+    may return only after the wall clock has crossed into the next bucket.
     """
     market = CoinExMarketClient()
     output = state_root / "microstructure.jsonl"
@@ -122,15 +136,29 @@ async def run_short_term_collector(
     seen: set[int] = set()
     max_seen = 50_000
     current: BucketAccumulator | None = None
+    previous: BucketAccumulator | None = None
+    previous_grace_complete = False
 
     while True:
+        # Flush a rolled bucket only after it has survived one extra fetch cycle.
+        if previous is not None and previous_grace_complete:
+            _append_jsonl(output, previous.to_row())
+            previous = None
+            previous_grace_complete = False
+
         now_ms = int(time() * 1000)
         bucket_start = now_ms // BUCKET_MS * BUCKET_MS
         if current is None:
             current = BucketAccumulator(bucket_start, now_ms, now_ms)
         elif bucket_start != current.bucket_start:
-            _append_jsonl(output, current.to_row())
+            # Normally previous has already been flushed at the top of the loop.
+            # The defensive flush avoids losing it if a very long poll spans more
+            # than one boundary.
+            if previous is not None:
+                _append_jsonl(output, previous.to_row())
+            previous = current
             current = BucketAccumulator(bucket_start, now_ms, now_ms)
+            previous_grace_complete = False
 
         try:
             deals, depth = await asyncio.gather(
@@ -142,18 +170,28 @@ async def run_short_term_collector(
                 ts = int(deal.get("created_at", 0) or 0)
                 if deal_id <= 0 or deal_id in seen:
                     continue
+
+                # Assign before permanently marking the ID as seen. On rollover,
+                # a late previous-bucket deal can therefore still reach the old
+                # accumulator rather than being silently discarded.
+                target = accumulator_for_timestamp(ts, current, previous)
+                if target is not None:
+                    target.add_deal(deal)
+                    target.last_observed_ms = max(target.last_observed_ms, ts)
+
                 if len(seen_order) >= max_seen:
                     old = seen_order.popleft()
                     seen.discard(old)
                 seen_order.append(deal_id)
                 seen.add(deal_id)
-                if current.bucket_start <= ts < current.bucket_start + BUCKET_MS:
-                    current.add_deal(deal)
-                    current.last_observed_ms = max(current.last_observed_ms, ts)
+
             current.add_depth(depth, now_ms)
         except (MarketDataError, OSError, ValueError):
             # The service is supervised by systemd; a temporary public-data
             # outage should reduce coverage rather than kill the collector.
             pass
+
+        if previous is not None:
+            previous_grace_complete = True
 
         await asyncio.sleep(max(1.0, poll_seconds))
