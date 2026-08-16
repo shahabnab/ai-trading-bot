@@ -146,6 +146,89 @@ class PayoffEstimate:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ConditionalPayoffRegime:
+    """Shrunk event/non-event payoff magnitudes for one causal state bucket."""
+
+    name: str
+    sample_count: int
+    event_count: int
+    non_event_count: int
+    mean_event_return: float
+    mean_non_event_return: float
+    event_shrinkage_weight: float
+    non_event_shrinkage_weight: float
+
+    def to_dict(self) -> dict[str, str | float | int]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class VolatilityConditionedPayoffEstimate:
+    """Calibration-only payoff model conditioned on current realized volatility.
+
+    The event probability remains the calibrated classifier output. Only the
+    conditional payoff magnitude changes by a LOW/NORMAL/HIGH volatility state.
+    Volatility cutoffs are fitted on the calibration slice, and each local mean
+    is shrunk toward the global payoff mean so sparse buckets cannot dominate.
+    """
+
+    event_hurdle_bps: float
+    trim_fraction: float
+    volatility_feature_name: str
+    low_vol_cutoff: float
+    high_vol_cutoff: float
+    shrinkage_samples: float
+    global_payoff: PayoffEstimate
+    low: ConditionalPayoffRegime
+    normal: ConditionalPayoffRegime
+    high: ConditionalPayoffRegime
+
+    def expected_gross_return(
+        self,
+        calibrated_probability: np.ndarray,
+        realized_volatility: np.ndarray,
+    ) -> np.ndarray:
+        p, vol = np.broadcast_arrays(
+            np.asarray(calibrated_probability, dtype=np.float64),
+            np.asarray(realized_volatility, dtype=np.float64),
+        )
+        event_mean = np.full(p.shape, self.global_payoff.mean_event_return, dtype=np.float64)
+        non_event_mean = np.full(p.shape, self.global_payoff.mean_non_event_return, dtype=np.float64)
+
+        finite = np.isfinite(vol)
+        low_mask = finite & (vol <= self.low_vol_cutoff)
+        normal_mask = finite & (vol > self.low_vol_cutoff) & (vol <= self.high_vol_cutoff)
+        high_mask = finite & (vol > self.high_vol_cutoff)
+
+        for mask, regime in (
+            (low_mask, self.low),
+            (normal_mask, self.normal),
+            (high_mask, self.high),
+        ):
+            event_mean[mask] = regime.mean_event_return
+            non_event_mean[mask] = regime.mean_non_event_return
+
+        return p * event_mean + (1.0 - p) * non_event_mean
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "event_hurdle_bps": self.event_hurdle_bps,
+            "trim_fraction": self.trim_fraction,
+            "volatility_feature_name": self.volatility_feature_name,
+            "low_vol_cutoff": self.low_vol_cutoff,
+            "high_vol_cutoff": self.high_vol_cutoff,
+            "shrinkage_samples": self.shrinkage_samples,
+            "global_payoff": self.global_payoff.to_dict(),
+            "low": self.low.to_dict(),
+            "normal": self.normal.to_dict(),
+            "high": self.high.to_dict(),
+        }
+
+
+PayoffModel = PayoffEstimate | VolatilityConditionedPayoffEstimate
+
+
 def estimate_payoffs(
     horizon_simple_return: np.ndarray,
     *,
@@ -175,6 +258,147 @@ def estimate_payoffs(
     )
 
 
+def _shrink_local_mean(
+    values: np.ndarray,
+    *,
+    global_mean: float,
+    trim_fraction: float,
+    shrinkage_samples: float,
+) -> tuple[float, float]:
+    values = np.asarray(values, dtype=np.float64).reshape(-1)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return float(global_mean), 0.0
+    local = trimmed_mean(values, trim_fraction=trim_fraction)
+    if shrinkage_samples == 0.0:
+        weight = 1.0
+    else:
+        weight = float(values.size) / (float(values.size) + shrinkage_samples)
+    shrunk = float(global_mean) + weight * (float(local) - float(global_mean))
+    return float(shrunk), float(weight)
+
+
+def _conditional_regime(
+    name: str,
+    returns: np.ndarray,
+    *,
+    event_hurdle_bps: float,
+    trim_fraction: float,
+    shrinkage_samples: float,
+    global_payoff: PayoffEstimate,
+) -> ConditionalPayoffRegime:
+    values = np.asarray(returns, dtype=np.float64).reshape(-1)
+    hurdle = float(event_hurdle_bps) / 10_000.0
+    event_mask = values > hurdle
+    winners = values[event_mask]
+    others = values[~event_mask]
+    event_mean, event_weight = _shrink_local_mean(
+        winners,
+        global_mean=global_payoff.mean_event_return,
+        trim_fraction=trim_fraction,
+        shrinkage_samples=shrinkage_samples,
+    )
+    non_event_mean, non_event_weight = _shrink_local_mean(
+        others,
+        global_mean=global_payoff.mean_non_event_return,
+        trim_fraction=trim_fraction,
+        shrinkage_samples=shrinkage_samples,
+    )
+    return ConditionalPayoffRegime(
+        name=name,
+        sample_count=int(values.size),
+        event_count=int(winners.size),
+        non_event_count=int(others.size),
+        mean_event_return=event_mean,
+        mean_non_event_return=non_event_mean,
+        event_shrinkage_weight=event_weight,
+        non_event_shrinkage_weight=non_event_weight,
+    )
+
+
+def estimate_volatility_conditioned_payoffs(
+    horizon_simple_return: np.ndarray,
+    realized_volatility: np.ndarray,
+    *,
+    event_hurdle_bps: float,
+    trim_fraction: float = 0.05,
+    low_quantile: float = 1.0 / 3.0,
+    high_quantile: float = 2.0 / 3.0,
+    shrinkage_samples: float = 30.0,
+    volatility_feature_name: str = "realized_vol_24h",
+) -> VolatilityConditionedPayoffEstimate:
+    """Fit a LOW/NORMAL/HIGH volatility payoff model on calibration data only.
+
+    This helper is intentionally state-conditional only in the payoff magnitudes;
+    it does not refit the classifier or event probabilities. The state variable
+    must be known at decision time (for example trailing 24h realized volatility),
+    never a future volatility target.
+    """
+    returns = np.asarray(horizon_simple_return, dtype=np.float64).reshape(-1)
+    volatility = np.asarray(realized_volatility, dtype=np.float64).reshape(-1)
+    if returns.shape != volatility.shape or returns.size == 0:
+        raise ValueError("returns and realized_volatility must have identical non-empty shapes")
+    if not 0.0 < low_quantile < high_quantile < 1.0:
+        raise ValueError("volatility quantiles must satisfy 0 < low < high < 1")
+    if shrinkage_samples < 0.0:
+        raise ValueError("shrinkage_samples must be non-negative")
+
+    finite = np.isfinite(returns) & np.isfinite(volatility)
+    paired_returns = returns[finite]
+    paired_volatility = volatility[finite]
+    if paired_returns.size < 15:
+        raise ValueError("too few finite calibration rows for volatility-conditioned payoff estimation")
+
+    global_payoff = estimate_payoffs(
+        paired_returns,
+        event_hurdle_bps=event_hurdle_bps,
+        trim_fraction=trim_fraction,
+    )
+    low_cutoff, high_cutoff = np.quantile(paired_volatility, [low_quantile, high_quantile])
+    low_cutoff = float(low_cutoff)
+    high_cutoff = float(high_cutoff)
+    if not math.isfinite(low_cutoff) or not math.isfinite(high_cutoff) or low_cutoff >= high_cutoff:
+        raise ValueError("calibration volatility does not support distinct LOW/NORMAL/HIGH cutoffs")
+
+    low_mask = paired_volatility <= low_cutoff
+    normal_mask = (paired_volatility > low_cutoff) & (paired_volatility <= high_cutoff)
+    high_mask = paired_volatility > high_cutoff
+
+    return VolatilityConditionedPayoffEstimate(
+        event_hurdle_bps=float(event_hurdle_bps),
+        trim_fraction=float(trim_fraction),
+        volatility_feature_name=str(volatility_feature_name),
+        low_vol_cutoff=low_cutoff,
+        high_vol_cutoff=high_cutoff,
+        shrinkage_samples=float(shrinkage_samples),
+        global_payoff=global_payoff,
+        low=_conditional_regime(
+            "LOW",
+            paired_returns[low_mask],
+            event_hurdle_bps=event_hurdle_bps,
+            trim_fraction=trim_fraction,
+            shrinkage_samples=shrinkage_samples,
+            global_payoff=global_payoff,
+        ),
+        normal=_conditional_regime(
+            "NORMAL",
+            paired_returns[normal_mask],
+            event_hurdle_bps=event_hurdle_bps,
+            trim_fraction=trim_fraction,
+            shrinkage_samples=shrinkage_samples,
+            global_payoff=global_payoff,
+        ),
+        high=_conditional_regime(
+            "HIGH",
+            paired_returns[high_mask],
+            event_hurdle_bps=event_hurdle_bps,
+            trim_fraction=trim_fraction,
+            shrinkage_samples=shrinkage_samples,
+            global_payoff=global_payoff,
+        ),
+    )
+
+
 def payoff_trim_sensitivity(
     horizon_simple_return: np.ndarray,
     *,
@@ -198,17 +422,31 @@ def payoff_trim_sensitivity(
     return rows
 
 
+def _gross_return(
+    calibrated_probability: np.ndarray,
+    payoff: PayoffModel,
+    *,
+    payoff_state: np.ndarray | None = None,
+) -> np.ndarray:
+    if isinstance(payoff, VolatilityConditionedPayoffEstimate):
+        if payoff_state is None:
+            raise ValueError("payoff_state is required for a volatility-conditioned payoff")
+        return payoff.expected_gross_return(calibrated_probability, payoff_state)
+    return payoff.expected_gross_return(calibrated_probability)
+
+
 def expected_value(
     calibrated_probability: np.ndarray,
-    payoff: PayoffEstimate,
+    payoff: PayoffModel,
     *,
     position: float,
     one_way_cost_rate: float,
+    payoff_state: np.ndarray | None = None,
 ) -> np.ndarray:
     """Expected net return for a commitment decision."""
     if one_way_cost_rate < 0.0:
         raise ValueError("one_way_cost_rate must be non-negative")
-    gross = payoff.expected_gross_return(calibrated_probability)
+    gross = _gross_return(calibrated_probability, payoff, payoff_state=payoff_state)
     if float(position) <= 0.0:
         return gross - 2.0 * one_way_cost_rate
     return gross
@@ -218,12 +456,13 @@ def ev_commitment_backtest(
     calibrated_probability: np.ndarray,
     actual_simple_return_1h: np.ndarray,
     *,
-    payoff: PayoffEstimate,
+    payoff: PayoffModel,
     one_way_cost_rate: float,
     horizon_hours: int,
     entry_margin: float = 0.0,
     exit_ev_threshold: float = 0.0,
     force_flat_at_end: bool = True,
+    payoff_state: np.ndarray | None = None,
 ) -> tuple[dict[str, float], np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Long/flat EV strategy with horizon-matched commitment boundaries.
 
@@ -239,6 +478,9 @@ def ev_commitment_backtest(
     ``gross_ev <= -one_way_cost_rate``. The historical value ``0.0`` therefore
     means "exit only when holding is worse than paying the exit cost", not
     "exit at any negative gross EV".
+
+    For a ``VolatilityConditionedPayoffEstimate``, ``payoff_state`` must contain
+    the causal realized-volatility value aligned with each probability row.
     """
     from backend.ml.evaluation import _performance_metrics
 
@@ -251,6 +493,14 @@ def ev_commitment_backtest(
     if one_way_cost_rate < 0.0:
         raise ValueError("one_way_cost_rate must be non-negative")
 
+    state: np.ndarray | None = None
+    if payoff_state is not None:
+        state = np.asarray(payoff_state, dtype=np.float64).reshape(-1)
+        if state.shape != probability.shape:
+            raise ValueError("payoff_state must align with probability")
+    if isinstance(payoff, VolatilityConditionedPayoffEstimate) and state is None:
+        raise ValueError("payoff_state is required for a volatility-conditioned payoff")
+
     positions = np.zeros(len(probability), dtype=np.float64)
     turnovers = np.zeros(len(probability), dtype=np.float64)
     strategy_returns = np.zeros(len(probability), dtype=np.float64)
@@ -261,7 +511,14 @@ def ev_commitment_backtest(
     for idx, p in enumerate(probability):
         next_position = position
         if bars_until_decision <= 0:
-            gross_ev = float(payoff.expected_gross_return(np.asarray([p]))[0])
+            local_state = None if state is None else np.asarray([state[idx]], dtype=np.float64)
+            gross_ev = float(
+                _gross_return(
+                    np.asarray([p], dtype=np.float64),
+                    payoff,
+                    payoff_state=local_state,
+                )[0]
+            )
             if position <= 0.0:
                 decision_ev = gross_ev - 2.0 * one_way_cost_rate
                 if decision_ev > entry_margin:
