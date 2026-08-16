@@ -91,44 +91,42 @@ class CoinExMarketClient:
 
     @staticmethod
     def _normalize_timestamp_ms(value: object) -> int | None:
-        """Return an epoch timestamp in milliseconds, or None when invalid.
-
-        CoinEx currently exposes millisecond timestamps, but normalizing here also
-        keeps the dashboard safe if an upstream response arrives in epoch seconds.
-        """
+        """Return an epoch timestamp in milliseconds, or None when invalid."""
         try:
             timestamp = int(value)
         except (TypeError, ValueError):
             return None
-
         if timestamp <= 0:
             return None
         if timestamp < 10_000_000_000:
             timestamp *= 1000
         return timestamp
 
-    async def get_klines(self, symbol: str, period: str = "5min", limit: int = 100) -> list[dict[str, object]]:
+    async def get_klines(
+        self,
+        symbol: str,
+        period: str = "5min",
+        limit: int = 100,
+        *,
+        start_time: int | None = None,
+    ) -> list[dict[str, object]]:
         symbol = symbol.upper().strip()
         limit = max(1, min(limit, 1000))
-        payload = await self._get(
-            "/spot/kline",
-            {"market": symbol, "period": period, "limit": limit},
-        )
+        params: dict[str, object] = {"market": symbol, "period": period, "limit": limit}
+        if start_time is not None:
+            params["start_time"] = int(start_time)
+        payload = await self._get("/spot/kline", params)
         data = payload.get("data")
         if not isinstance(data, list):
             raise MarketDataError("CoinEx returned an unexpected candlestick payload")
 
-        # Lightweight Charts requires strictly ordered, unique timestamps. Build
-        # a timestamp-keyed map so duplicate CoinEx rows cannot crash the client.
         candles_by_timestamp: dict[int, dict[str, object]] = {}
         for item in data:
             if not isinstance(item, dict):
                 continue
-
             created_at = self._normalize_timestamp_ms(item.get("created_at"))
             if created_at is None:
                 continue
-
             try:
                 open_price = Decimal(str(item.get("open", "0")))
                 close_price = Decimal(str(item.get("close", "0")))
@@ -136,10 +134,8 @@ class CoinExMarketClient:
                 low_price = Decimal(str(item.get("low", "0")))
             except (InvalidOperation, TypeError, ValueError):
                 continue
-
             if any(price <= 0 for price in (open_price, close_price, high_price, low_price)):
                 continue
-
             candles_by_timestamp[created_at] = {
                 "symbol": str(item.get("market", symbol)),
                 "created_at": created_at,
@@ -150,5 +146,76 @@ class CoinExMarketClient:
                 "volume": str(item.get("volume", "0")),
                 "value": str(item.get("value", "0")),
             }
-
         return [candles_by_timestamp[timestamp] for timestamp in sorted(candles_by_timestamp)]
+
+    async def get_deals(self, symbol: str, *, limit: int = 1000) -> list[dict[str, object]]:
+        """Return recent public trades including CoinEx taker side.
+
+        The endpoint is public/read-only. Values are normalized so the short-term
+        collector can aggregate buy/sell notional without depending on raw API
+        formatting.
+        """
+        symbol = symbol.upper().strip()
+        limit = max(1, min(limit, 1000))
+        payload = await self._get("/spot/deals", {"market": symbol, "limit": limit})
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise MarketDataError("CoinEx returned an unexpected deals payload")
+        out: list[dict[str, object]] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            ts = self._normalize_timestamp_ms(item.get("created_at"))
+            try:
+                deal_id = int(item.get("deal_id", 0))
+                side = str(item.get("side", "")).lower()
+                price = Decimal(str(item.get("price", "0")))
+                amount = Decimal(str(item.get("amount", "0")))
+            except (InvalidOperation, TypeError, ValueError):
+                continue
+            if ts is None or deal_id <= 0 or side not in {"buy", "sell"} or price <= 0 or amount <= 0:
+                continue
+            out.append({
+                "deal_id": deal_id,
+                "created_at": ts,
+                "side": side,
+                "price": str(price),
+                "amount": str(amount),
+                "notional": str(price * amount),
+            })
+        out.sort(key=lambda row: (int(row["created_at"]), int(row["deal_id"])))
+        return out
+
+    async def get_depth(self, symbol: str, *, limit: int = 20, interval: str = "0.01") -> dict[str, object]:
+        """Return a normalized public order-book snapshot."""
+        symbol = symbol.upper().strip()
+        if limit not in {5, 10, 20, 50}:
+            raise ValueError("CoinEx depth limit must be one of 5, 10, 20, 50")
+        payload = await self._get("/spot/depth", {"market": symbol, "limit": limit, "interval": interval})
+        data = payload.get("data")
+        if not isinstance(data, dict) or not isinstance(data.get("depth"), dict):
+            raise MarketDataError("CoinEx returned an unexpected depth payload")
+        depth = data["depth"]
+
+        def normalize_levels(raw: object) -> list[dict[str, str]]:
+            levels: list[dict[str, str]] = []
+            if not isinstance(raw, list):
+                return levels
+            for level in raw:
+                if not isinstance(level, list) or len(level) < 2:
+                    continue
+                try:
+                    price = Decimal(str(level[0])); amount = Decimal(str(level[1]))
+                except (InvalidOperation, TypeError, ValueError):
+                    continue
+                if price > 0 and amount > 0:
+                    levels.append({"price": str(price), "amount": str(amount)})
+            return levels
+
+        return {
+            "market": str(data.get("market", symbol)),
+            "updated_at": self._normalize_timestamp_ms(depth.get("updated_at")),
+            "last": str(depth.get("last", "0")),
+            "bids": normalize_levels(depth.get("bids")),
+            "asks": normalize_levels(depth.get("asks")),
+        }
