@@ -17,12 +17,12 @@
       "standardizer_exists": true
     }
   },
-  "generated_at": "2026-08-16T12:18:18.863716+00:00",
+  "generated_at": "2026-08-16T12:22:06.919874+00:00",
   "git": {
     "branch": "step-5-live-paper-dashboard",
     "head": "0a2b6dcf4dff0a84319a80122c4d854704894b1a",
     "origin": "https://github.com/shahabnab/ai-trading-bot.git",
-    "tracked_dirty": true
+    "tracked_dirty": false
   },
   "guardrails": {
     "automatic_code_fix_scope": "ops/deployment/observability only; no strategy/risk/model/threshold changes",
@@ -31,14 +31,8 @@
     "trading_mode": "paper"
   },
   "hostname": "ubuntu-8gb-hel1-1",
-  "issues": [
-    {
-      "code": "tracked_code_drift",
-      "message": "server has tracked code changes not committed to Git",
-      "severity": "warning"
-    }
-  ],
-  "overall_status": "degraded",
+  "issues": [],
+  "overall_status": "healthy",
   "paper": {
     "available": true,
     "database": "/opt/ai-trading-bot/data/paper_trading.sqlite3",
@@ -232,7 +226,7 @@
   },
   "strategies": {
     "trader-brain-bandit-v1": {
-      "age_minutes": 78.31439526666666,
+      "age_minutes": 82.11533123333334,
       "decision_ev": -0.0022948201344287797,
       "display_name": "Trader Brain + RL",
       "driver": "trader_brain_rl",
@@ -252,7 +246,7 @@
       "trade": null
     },
     "trader-brain-v1": {
-      "age_minutes": 78.31439526666666,
+      "age_minutes": 82.11533123333334,
       "decision_ev": -0.0022948201344287797,
       "display_name": "Trader Brain V1",
       "driver": "trader_brain",
@@ -272,7 +266,7 @@
       "trade": null
     },
     "v3-25bps-fullcontext-12h": {
-      "age_minutes": 18.31439526666667,
+      "age_minutes": 22.115331233333333,
       "decision_ev": -0.006403547764425916,
       "display_name": "V3 12h Economic",
       "driver": "frozen_v3",
@@ -283,7 +277,7 @@
       "trade": null
     },
     "v3-50bps-technical-3h": {
-      "age_minutes": 18.31439526666667,
+      "age_minutes": 22.115331233333333,
       "decision_ev": -0.005558706578954929,
       "display_name": "V3 3h Signal Control",
       "driver": "frozen_v3",
@@ -297,19 +291,19 @@
   "system": {
     "cpu_count": 4,
     "disk": {
-      "free_bytes": 69873586176,
-      "free_fraction": 0.87037908753108,
+      "free_bytes": 69872263168,
+      "free_fraction": 0.8703626075053813,
       "total_bytes": 80279486464,
-      "used_bytes": 7107641344
+      "used_bytes": 7108964352
     },
     "load_average": {
-      "15m": 0.2705078125,
-      "1m": 0.2958984375,
-      "5m": 0.20263671875
+      "15m": 0.24267578125,
+      "1m": 0.31103515625,
+      "5m": 0.18359375
     },
     "memory": {
-      "available_bytes": 7387090944,
-      "available_fraction": 0.909480082844635,
+      "available_bytes": 7389782016,
+      "available_fraction": 0.9098114008701006,
       "total_bytes": 8122322944
     }
   }
