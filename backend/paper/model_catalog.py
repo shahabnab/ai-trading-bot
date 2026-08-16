@@ -68,9 +68,32 @@ TRADER_BRAIN_MODELS: tuple[PaperModelSpec, ...] = (
     ),
 )
 
+SHORT_TERM_MODELS: tuple[PaperModelSpec, ...] = (
+    PaperModelSpec(
+        model_id="short-momentum-15m", display_name="Intraday Momentum 15m", role="short_term_benchmark",
+        target_bps=65, horizon_hours=2, feature_set="15m_ohlcv_orderflow_depth", research_auc=0.0,
+        research_median_auc=0.0, research_sharpe_25bps=0.0, research_return_25bps=0.0,
+        research_trades=0, driver="short_term", algorithm_family="15m Momentum + Microstructure",
+        description=(
+            "Cost-aware intraday momentum benchmark using 15-minute OHLCV, EMA/RSI/ATR, volume/value, "
+            "CoinEx taker flow and order-book imbalance. Long/flat PAPER only; maximum intended hold about 2h."
+        ),
+    ),
+    PaperModelSpec(
+        model_id="short-mean-reversion-15m", display_name="Intraday Mean Reversion 15m", role="short_term_benchmark",
+        target_bps=65, horizon_hours=2, feature_set="15m_ohlcv_orderflow_depth", research_auc=0.0,
+        research_median_auc=0.0, research_sharpe_25bps=0.0, research_return_25bps=0.0,
+        research_trades=0, driver="short_term", algorithm_family="15m Mean Reversion + Microstructure",
+        description=(
+            "Cost-aware oversold/mean-reversion benchmark using Bollinger displacement, RSI, VWAP distance, "
+            "volume plus CoinEx taker flow and depth. Long/flat PAPER only; maximum intended hold about 2h."
+        ),
+    ),
+)
+
 # Critical compatibility contract: forward_v3.py iterates PAPER_MODELS and expects frozen Keras artifacts.
 PAPER_MODELS = FROZEN_V3_MODELS
-ALL_PAPER_MODELS = FROZEN_V3_MODELS + TRADER_BRAIN_MODELS
+ALL_PAPER_MODELS = FROZEN_V3_MODELS + TRADER_BRAIN_MODELS + SHORT_TERM_MODELS
 FROZEN_FORWARD_MODELS = FROZEN_V3_MODELS
 MODEL_BY_ID = {model.model_id: model for model in ALL_PAPER_MODELS}
 
