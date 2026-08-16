@@ -5,11 +5,14 @@ ROOT="${1:-/opt/ai-trading-bot}"
 PYTHON="$ROOT/.venv/bin/python"
 SUPERVISOR="$ROOT/scripts/ops_supervisor.py"
 PUBLISHER="$ROOT/scripts/publish_ops_status.py"
+UPDATER="$ROOT/scripts/safe_ops_auto_update.py"
 ENV_FILE="/etc/ai-trading-ops.env"
 SERVICE="/etc/systemd/system/ai-trading-ops-supervisor.service"
 TIMER="/etc/systemd/system/ai-trading-ops-supervisor.timer"
+UPDATE_SERVICE="/etc/systemd/system/ai-trading-ops-update.service"
+UPDATE_TIMER="/etc/systemd/system/ai-trading-ops-update.timer"
 
-for path in "$PYTHON" "$SUPERVISOR" "$PUBLISHER"; do
+for path in "$PYTHON" "$SUPERVISOR" "$PUBLISHER" "$UPDATER"; do
   [[ -e "$path" ]] || { echo "Missing: $path" >&2; exit 1; }
 done
 
@@ -59,9 +62,42 @@ Unit=ai-trading-ops-supervisor.service
 WantedBy=timers.target
 EOF
 
-chmod +x "$SUPERVISOR" "$PUBLISHER"
+cat > "$UPDATE_SERVICE" <<EOF
+[Unit]
+Description=Safely deploy supervision-only GitHub updates
+Wants=network-online.target
+After=network-online.target ai-trading-ops-supervisor.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=$ROOT
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$ROOT
+ExecStart=$PYTHON $UPDATER --remote origin --branch step-5-live-paper-dashboard
+SuccessExitStatus=10
+TimeoutStartSec=10min
+Nice=9
+EOF
+
+cat > "$UPDATE_TIMER" <<'EOF'
+[Unit]
+Description=Check for safe supervision-only code updates
+
+[Timer]
+OnCalendar=*-*-* *:45:00 UTC
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=30s
+Unit=ai-trading-ops-update.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+chmod +x "$SUPERVISOR" "$PUBLISHER" "$UPDATER"
 systemctl daemon-reload
-systemctl enable --now ai-trading-ops-supervisor.timer
+systemctl enable --now ai-trading-ops-supervisor.timer ai-trading-ops-update.timer
 
 echo "Running first supervisor snapshot..."
 set +e
@@ -76,7 +112,7 @@ PUB_RC=$?
 set -e
 
 echo
-systemctl list-timers ai-trading-ops-supervisor.timer --no-pager
+systemctl list-timers ai-trading-ops-supervisor.timer ai-trading-ops-update.timer --no-pager
 
 echo
 if [[ $PUB_RC -ne 0 ]]; then
@@ -92,3 +128,5 @@ if [[ $SUP_RC -eq 2 ]]; then
 else
   echo "Ops supervision installed and publishing successfully."
 fi
+
+echo "Guarded auto-update is enabled for supervision-only files. Trading/model/risk files are never auto-deployed."
