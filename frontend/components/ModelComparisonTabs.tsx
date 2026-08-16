@@ -58,6 +58,8 @@ type Props = {
   models: PaperModel[];
   tradesByModel: Record<string, PaperTrade[]>;
   decisionsByModel: Record<string, PaperDecision[]>;
+  eyebrow?: string;
+  title?: string;
 };
 
 function n(value: string | number | null | undefined): number {
@@ -85,7 +87,13 @@ const card: React.CSSProperties = {
 };
 const thtd: React.CSSProperties = { padding: "10px 12px", borderBottom: "1px solid rgba(148,163,184,.15)", textAlign: "left" };
 
-export default function ModelComparisonTabs({ models, tradesByModel, decisionsByModel }: Props) {
+export default function ModelComparisonTabs({
+  models,
+  tradesByModel,
+  decisionsByModel,
+  eyebrow = "ALL ALGORITHMS · SAME PAPER CONDITIONS",
+  title = "Forward performance comparison",
+}: Props) {
   const ranked = useMemo(() => [...models].sort((a, b) => n(b.portfolio.total_return) - n(a.portfolio.total_return)), [models]);
   const [activeId, setActiveId] = useState(ranked[0]?.model_id ?? "");
   const active = ranked.find((model) => model.model_id === activeId) ?? ranked[0];
@@ -97,7 +105,7 @@ export default function ModelComparisonTabs({ models, tradesByModel, decisionsBy
     <section style={{ display: "grid", gap: 20 }}>
       <article style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "end", marginBottom: 12 }}>
-          <div><small>ALL ALGORITHMS · SAME PAPER CONDITIONS</small><h2 style={{ margin: "4px 0" }}>Forward performance comparison</h2></div>
+          <div><small>{eyebrow}</small><h2 style={{ margin: "4px 0" }}>{title}</h2></div>
           <span>{models.length} independent ledgers</span>
         </div>
         <div style={{ overflowX: "auto" }}>

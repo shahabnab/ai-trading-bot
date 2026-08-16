@@ -13,13 +13,14 @@ from pathlib import Path
 from typing import Any
 
 from backend.config import settings
-from backend.paper.model_catalog import ALL_PAPER_MODELS, FROZEN_V3_MODELS
+from backend.paper.model_catalog import ALL_PAPER_MODELS, FROZEN_V3_MODELS, SHORT_TERM_MODELS
 from backend.paper.model_engine import ModelPaperStore
 
 ROOT = Path(__file__).resolve().parents[1]
 HOUR_MS = 60 * 60 * 1000
 DEFAULT_OUTPUT = ROOT / "state/ops/system_health.json"
 DEFAULT_STALE_MINUTES = 100
+SHORT_TERM_STALE_MINUTES = 40
 
 
 def _run(*args: str, timeout: int = 15) -> tuple[int, str]:
@@ -212,6 +213,27 @@ def _strategy_runtime(now: datetime) -> dict[str, Any]:
             "policy_source": row.get("policy_source"),
             "learning": row.get("learning"),
         }
+
+    for spec in SHORT_TERM_MODELS:
+        row = _read_json(ROOT / f"state/short_term/latest_{spec.model_id}.json")
+        feature_iso = _iso_from_ms(row.get("feature_timestamp"))
+        feature_dt = _parse_iso(feature_iso)
+        decision = row.get("decision") if isinstance(row.get("decision"), dict) else {}
+        features = row.get("features") if isinstance(row.get("features"), dict) else {}
+        out[spec.model_id] = {
+            "display_name": spec.display_name,
+            "driver": spec.driver,
+            "feature_time_utc": feature_iso,
+            "age_minutes": _age_minutes(feature_dt, now),
+            "signal": row.get("signal"),
+            "edge_proxy_bps": decision.get("edge_proxy_bps"),
+            "confidence": decision.get("confidence"),
+            "feature_quality": features.get("quality"),
+            "microstructure_coverage": features.get("microstructure_coverage"),
+            "round_trip_cost_bps": row.get("round_trip_cost_bps"),
+            "trade": row.get("trade"),
+            "recorded_at": row.get("recorded_at"),
+        }
     return out
 
 
@@ -221,6 +243,9 @@ def _latest_market_price(runtime: dict[str, Any]) -> Decimal | None:
         if model_id.startswith("v3-"):
             row = _latest_v3_predictions().get(model_id, {})
             candidates.append(row.get("paper_market_price"))
+        elif model_id.startswith("short-"):
+            row = _read_json(ROOT / f"state/short_term/latest_{model_id}.json")
+            candidates.append(row.get("market_price"))
         else:
             row = _read_json(ROOT / f"state/trader_brain/latest_{model_id}.json")
             candidates.append(row.get("market_price"))
@@ -300,8 +325,11 @@ def _artifacts() -> dict[str, Any]:
 
 def _journal_errors() -> list[str]:
     code, text = _run(
-        "journalctl", "-u", "ai-trading-all-forward.service",
-        "--since", "-2 hours", "--no-pager", "-n", "120", "-o", "cat", timeout=20,
+        "journalctl",
+        "-u", "ai-trading-all-forward.service",
+        "-u", "ai-trading-shortterm.service",
+        "-u", "ai-trading-shortterm-collector.service",
+        "--since", "-2 hours", "--no-pager", "-n", "180", "-o", "cat", timeout=20,
     )
     if code not in (0, 1):
         return [f"journalctl query failed rc={code}: {text[:300]}"]
@@ -326,23 +354,31 @@ def _assess(
 ) -> tuple[str, list[dict[str, str]]]:
     issues: list[dict[str, str]] = []
 
-    for unit in ("ai-trading-backend.service", "ai-trading-frontend.service", "ai-trading-all-forward.timer"):
+    for unit in (
+        "ai-trading-backend.service",
+        "ai-trading-frontend.service",
+        "ai-trading-all-forward.timer",
+        "ai-trading-shortterm-collector.service",
+        "ai-trading-shortterm.timer",
+    ):
         active = services.get(unit, {}).get("ActiveState")
         if active != "active":
             issues.append({"severity": "critical", "code": "unit_inactive", "message": f"{unit} ActiveState={active!r}"})
 
-    service = services.get("ai-trading-all-forward.service", {})
-    result = str(service.get("Result", ""))
-    status = str(service.get("ExecMainStatus", ""))
-    if result and result not in {"success", ""}:
-        issues.append({"severity": "critical", "code": "forward_service_failed", "message": f"forward service result={result}, status={status}"})
+    for unit in ("ai-trading-all-forward.service", "ai-trading-shortterm.service"):
+        service = services.get(unit, {})
+        result = str(service.get("Result", ""))
+        status = str(service.get("ExecMainStatus", ""))
+        if result and result not in {"success", ""}:
+            issues.append({"severity": "critical", "code": "forward_service_failed", "message": f"{unit} result={result}, status={status}"})
 
     for model_id, row in runtime.items():
         age = row.get("age_minutes")
+        limit = SHORT_TERM_STALE_MINUTES if row.get("driver") == "short_term" else stale_minutes
         if age is None:
             issues.append({"severity": "critical", "code": "missing_strategy_state", "message": f"{model_id} has no forward state"})
-        elif float(age) > stale_minutes:
-            issues.append({"severity": "critical", "code": "stale_strategy_state", "message": f"{model_id} state is {float(age):.1f} minutes old"})
+        elif float(age) > limit:
+            issues.append({"severity": "critical", "code": "stale_strategy_state", "message": f"{model_id} state is {float(age):.1f} minutes old (limit {limit}m)"})
 
     for model_id, row in artifacts.items():
         if not row.get("model_exists") or not row.get("manifest_exists") or not row.get("standardizer_exists"):
@@ -382,6 +418,9 @@ def build_report(stale_minutes: int = DEFAULT_STALE_MINUTES) -> dict[str, Any]:
         "ai-trading-frontend.service",
         "ai-trading-all-forward.timer",
         "ai-trading-all-forward.service",
+        "ai-trading-shortterm-collector.service",
+        "ai-trading-shortterm.timer",
+        "ai-trading-shortterm.service",
         "ai-trading-ops-supervisor.timer",
     )
     services = {name: _systemctl(name) for name in service_names}
@@ -394,7 +433,7 @@ def build_report(stale_minutes: int = DEFAULT_STALE_MINUTES) -> dict[str, Any]:
     paper = _paper_performance(mark_price)
     overall, issues = _assess(services, runtime, artifacts, metrics, errors, stale_minutes, git)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": now.isoformat(),
         "hostname": os.uname().nodename,
         "overall_status": overall,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from scripts.ops_supervisor import _age_minutes, _assess, _parse_iso
 
@@ -11,12 +11,17 @@ def _healthy_inputs():
         "ai-trading-frontend.service": {"ActiveState": "active"},
         "ai-trading-all-forward.timer": {"ActiveState": "active"},
         "ai-trading-all-forward.service": {"Result": "success", "ExecMainStatus": "0"},
+        "ai-trading-shortterm-collector.service": {"ActiveState": "active"},
+        "ai-trading-shortterm.timer": {"ActiveState": "active"},
+        "ai-trading-shortterm.service": {"Result": "success", "ExecMainStatus": "0"},
     }
     runtime = {
-        "v3-25bps-fullcontext-12h": {"age_minutes": 20.0},
-        "v3-50bps-technical-3h": {"age_minutes": 20.0},
-        "trader-brain-v1": {"age_minutes": 20.0},
-        "trader-brain-bandit-v1": {"age_minutes": 20.0},
+        "v3-25bps-fullcontext-12h": {"age_minutes": 20.0, "driver": "frozen_v3"},
+        "v3-50bps-technical-3h": {"age_minutes": 20.0, "driver": "frozen_v3"},
+        "trader-brain-v1": {"age_minutes": 20.0, "driver": "trader_brain"},
+        "trader-brain-bandit-v1": {"age_minutes": 20.0, "driver": "trader_brain_rl"},
+        "short-momentum-15m": {"age_minutes": 20.0, "driver": "short_term"},
+        "short-mean-reversion-15m": {"age_minutes": 20.0, "driver": "short_term"},
     }
     artifacts = {
         "v3-25bps-fullcontext-12h": {
@@ -57,6 +62,25 @@ def test_assess_stale_strategy_is_critical():
     status, issues = _assess(services, runtime, artifacts, metrics, [], 100, git)
     assert status == "critical"
     assert any(issue["code"] == "stale_strategy_state" for issue in issues)
+
+
+def test_assess_short_term_uses_tighter_staleness_limit():
+    services, runtime, artifacts, metrics, git = _healthy_inputs()
+    runtime["short-momentum-15m"]["age_minutes"] = 45.0
+    status, issues = _assess(services, runtime, artifacts, metrics, [], 100, git)
+    assert status == "critical"
+    assert any(
+        issue["code"] == "stale_strategy_state" and "short-momentum-15m" in issue["message"]
+        for issue in issues
+    )
+
+
+def test_assess_missing_shortterm_collector_is_critical():
+    services, runtime, artifacts, metrics, git = _healthy_inputs()
+    services["ai-trading-shortterm-collector.service"]["ActiveState"] = "inactive"
+    status, issues = _assess(services, runtime, artifacts, metrics, [], 100, git)
+    assert status == "critical"
+    assert any(issue["code"] == "unit_inactive" for issue in issues)
 
 
 def test_assess_cuda_noise_is_not_needed_for_health():

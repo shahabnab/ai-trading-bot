@@ -42,6 +42,9 @@ export default async function Home() {
   }));
   const tradesByModel = Object.fromEntries(tradeEntries) as Record<string, PaperTrade[]>;
   const decisionsByModel = Object.fromEntries(decisionEntries) as Record<string, PaperDecision[]>;
+
+  const shortTermModels = models.filter((model) => model.driver === "short_term");
+  const coreModels = models.filter((model) => model.driver !== "short_term");
   const ranked = [...models].sort((a,b) => Number(b.portfolio.total_return) - Number(a.portfolio.total_return));
   const leader = ranked[0];
   const fills = models.reduce((sum, model) => sum + model.performance.trade_count, 0);
@@ -52,18 +55,36 @@ export default async function Home() {
   return (
     <main className="app-shell" style={{ display: "grid", gap: 20 }}>
       <section className="hero">
-        <div><p className="eyebrow">AI TRADING OBSERVATORY</p><h1>Every algorithm, one scoreboard. <span>Every approach stays auditable.</span></h1><p className="hero-copy">Frozen V3 controls, Trader Brain V1, and Trader Brain + RL run on independent PAPER ledgers. The main ranking uses forward paper outcomes; historical research metrics remain separate.</p></div>
+        <div><p className="eyebrow">AI TRADING OBSERVATORY</p><h1>Every algorithm, one scoreboard. <span>Every approach stays auditable.</span></h1><p className="hero-copy">Frozen V3 controls and Trader Brain remain the untouched medium/long-horizon forward experiment. A separate 15-minute Short-Term Lab tests cost-aware momentum and mean-reversion using OHLCV, taker flow and order-book microstructure on independent PAPER ledgers.</p></div>
         <div className="hero-badges"><span className={health?.status === "ok" ? "status-badge on" : "status-badge off"}>{health?.status === "ok" ? "API live" : "API offline"}</span><span className="status-badge on">PAPER ONLY</span><span className="status-badge on">REAL ORDERS DISABLED</span></div>
       </section>
 
       <section style={grid}>
-        <article style={panel}><small>ALGORITHMS</small><h2>{models.length}</h2><p>Independent €1,000-equivalent paper ledgers</p></article>
+        <article style={panel}><small>ALGORITHMS</small><h2>{models.length}</h2><p>{coreModels.length} core + {shortTermModels.length} short-term independent €1,000 ledgers</p></article>
         <article style={panel}><small>CURRENT LEADER</small><h2>{leader?.display_name ?? "Waiting"}</h2><p>{leader ? `${(Number(leader.portfolio.total_return)*100).toFixed(2)}% net` : "No forward data"}</p></article>
         <article style={panel}><small>SIMULATED FILLS</small><h2>{fills}</h2><p>Across all compared algorithms</p></article>
         <article style={panel}><small>BTCUSDT</small><h2>{quote ? `$${Number(quote.last).toLocaleString(undefined,{maximumFractionDigits:2})}` : "—"}</h2><p>Live public CoinEx reference</p></article>
       </section>
 
-      <ModelComparisonTabs models={models} tradesByModel={tradesByModel} decisionsByModel={decisionsByModel} />
+      {coreModels.length > 0 && (
+        <ModelComparisonTabs
+          models={coreModels}
+          tradesByModel={tradesByModel}
+          decisionsByModel={decisionsByModel}
+          eyebrow="CORE FORWARD EXPERIMENT · UNCHANGED"
+          title="Medium / long-horizon performance"
+        />
+      )}
+
+      {shortTermModels.length > 0 && (
+        <ModelComparisonTabs
+          models={shortTermModels}
+          tradesByModel={tradesByModel}
+          decisionsByModel={decisionsByModel}
+          eyebrow="SHORT-TERM LAB · 15-MINUTE MARKET STRUCTURE"
+          title="Intraday performance comparison"
+        />
+      )}
 
       <LivePredictionTerminal />
 
