@@ -25,6 +25,8 @@ The first short-term feature set includes:
 
 CoinEx public market endpoints are read-only. No exchange credentials are required for this collector.
 
+The current benchmark implementation uses simple-window average gain/loss for RSI and a simple 14-bar mean true range for ATR. These are intentionally kept stable for the existing hand-written thresholds; they are not Wilder-smoothed indicators. A future learned model must either use these exact feature definitions or explicitly version a changed definition rather than silently mixing them.
+
 ## Live collection
 
 `ai-trading-shortterm-collector.service` polls public BTCUSDT deals and depth and aggregates them into completed 15-minute buckets at:
@@ -37,6 +39,8 @@ Each 15-minute decision cycle also stores the point-in-time feature row at:
 
 These rows become forward research data for a later trained Short Trader-Brain model.
 
+At bucket rollover, the previous microstructure accumulator remains alive for one additional collector poll so deals reported a few seconds late are still assigned to the bucket that owns their timestamp.
+
 ## Initial active baselines
 
 1. `short-momentum-15m` — cost-aware trend/momentum benchmark.
@@ -45,6 +49,25 @@ These rows become forward research data for a later trained Short Trader-Brain m
 Both are long/flat spot PAPER strategies with independent €1,000-equivalent ledgers. They are evaluated every 15 minutes and target holds up to roughly two hours.
 
 The entry hurdle uses the configured paper fee plus slippage for both entry and exit, plus a 15 bps research buffer. With the current 20 bps fee and 5 bps slippage assumptions, the default hurdle is 65 bps. This is deliberately conservative: the goal is more *candidate opportunities*, not forced turnover.
+
+New entries fail closed when the aligned microstructure bucket is incomplete: at least 50% bucket coverage plus both spread and order-book imbalance are required. Missing market microstructure must never increase confirmation strength. Exit paths remain available when microstructure is missing so an existing position cannot be trapped by a collector outage.
+
+Momentum edge is measured only from directional price returns; ATR is treated as dispersion and does not by itself satisfy the cost hurdle. Mean-reversion displacement is signed so only movement below VWAP/Bollinger center contributes to a long oversold edge. Protective stops and maximum-hold exits are always allowed, while a normal mean-reversion target exit must first recover the configured round-trip execution cost.
+
+Each decision result records the completed signal-bar close, live execution quote, signal-to-execution drift in basis points and feature age so later analysis can quantify decay between the 15-minute close and the timer-triggered paper fill.
+
+## Forward comparison maturity
+
+Short-term benchmark results must not be compared with the 3h/12h V3 strategies from raw portfolio return alone because the decision horizons and exposure cadence differ materially. Use net expectancy per completed trade, return on deployed capital, Sharpe/Sortino, drawdown, turnover, invested fraction and cost-adjusted performance alongside total return.
+
+Use the following forward-sample labels per short-term model:
+
+- fewer than 50 completed trades: **observational only**; do not rank against V3
+- 50–99 completed trades: **preliminary**
+- 100–199 completed trades: **scoreboard eligible**, but conclusions remain tentative
+- 200 or more completed trades: **mature comparison sample** for stronger conclusions, subject to regime coverage and the same no-look-ahead/cost rules
+
+Any safety/methodology deployment that changes entry or exit semantics should be timestamped by Git commit so pre-change and post-change forward observations are not silently pooled as one policy version.
 
 ## Next research stage
 
