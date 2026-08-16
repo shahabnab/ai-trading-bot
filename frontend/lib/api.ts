@@ -166,6 +166,11 @@ export type PaperModelAccount = {
   research_return_25bps: number;
   research_trades: number;
   research_gate_passed: boolean;
+  driver?: string;
+  algorithm_family?: string;
+  description?: string;
+  adaptive?: boolean;
+  supports_short?: boolean;
   portfolio: PaperPortfolio;
   performance: PaperPerformance;
   latest_decision: PaperDecision | null;
