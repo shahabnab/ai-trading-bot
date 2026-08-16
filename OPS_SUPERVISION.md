@@ -16,9 +16,7 @@ The local snapshot is written to `state/ops/system_health.json` and is intention
 
 ## GitHub bridge
 
-A dedicated branch named `ops-status` stores the latest published snapshot at:
-
-`ops/status.json`
+A dedicated branch named `ops-status` stores the latest published snapshot at `ops/status.json`.
 
 `publish_ops_status.py` uses either:
 
@@ -38,11 +36,13 @@ chmod +x scripts/install_ops_supervisor.sh
 bash scripts/install_ops_supervisor.sh /opt/ai-trading-bot
 ```
 
-The timer runs at approximately `:15 UTC` every hour, after the forward trading timer at `:05 UTC`.
+The health publisher runs at approximately `:15 UTC` every hour, after the forward trading timer at `:05 UTC`.
+
+A second guarded updater runs around `:45 UTC`. It fetches `step-5-live-paper-dashboard`, refuses to deploy if the server has tracked local changes, refuses any commit touching files outside the supervision whitelist, tests the candidate revision in a detached Git worktree, and only then performs a fast-forward merge. A normal trading/model/risk code change therefore stops at `manual_review_required` instead of being auto-deployed.
 
 ## Guardrails
 
-Automatic supervision may diagnose and repair only operational plumbing such as service files, deployment scripts, logging, status publication, or dashboard observability. It must not silently change:
+Automatic supervision and automatic deployment are limited to the explicit supervision whitelist. They must not silently change:
 
 - frozen V3 models or manifests
 - model features or training data
