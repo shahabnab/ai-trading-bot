@@ -50,7 +50,7 @@ def test_risk_manager_rejects_low_confidence_buy() -> None:
 def test_risk_manager_limits_new_position_size() -> None:
     decision = _manager().evaluate(_proposal(notional_usdt=Decimal("1500")))
     assert decision.approved is False
-    assert "risk limit" in decision.reason.lower()
+    assert "portfolio value" in decision.reason.lower()
 
 
 def test_risk_manager_limits_per_symbol_exposure() -> None:
@@ -58,7 +58,7 @@ def test_risk_manager_limits_per_symbol_exposure() -> None:
         _proposal(symbol_exposure_usdt=Decimal("1800"), notional_usdt=Decimal("500"))
     )
     assert decision.approved is False
-    assert "per-symbol cap" in decision.reason.lower()
+    assert "symbol exposure" in decision.reason.lower()
 
 
 def test_risk_manager_limits_total_exposure() -> None:
