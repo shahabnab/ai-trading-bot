@@ -93,8 +93,8 @@ export async function GET() {
   const tradesByModel = await Promise.all(models.map((model) => getPaperModelTrades(model.model_id, 1000)));
   const forwardModels = models.map((model, index) => ({
     ...model,
-    artifact_ready: artifactReady(model.model_id),
-    history: records.filter((row) => row.model_id === model.model_id).slice(-720),
+    artifact_ready: model.driver === "frozen_v3" ? artifactReady(model.model_id) : true,
+    history: model.driver === "frozen_v3" ? records.filter((row) => row.model_id === model.model_id).slice(-720) : [],
     trades: tradesByModel[index] ?? [],
   }));
 
