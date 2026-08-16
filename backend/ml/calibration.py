@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import math
+from typing import Iterable
 
 import numpy as np
 
@@ -10,8 +11,8 @@ import numpy as np
 class PlattCalibrator:
     """Two-parameter logistic calibrator fitted to model probabilities.
 
-    The base model probability is first converted to a logit.  A slope and
-    intercept are then fitted by regularized Newton updates.  Keeping this
+    The base model probability is first converted to a logit. A slope and
+    intercept are then fitted by regularized Newton updates. Keeping this
     implementation dependency-free avoids pulling scikit-learn onto the GPU
     server just for calibration.
     """
@@ -48,7 +49,7 @@ def fit_platt_scaler(
     """Fit Platt scaling using a stable 2x2 Newton solve.
 
     A single-class calibration slice cannot identify a logistic calibration
-    curve.  In that case the function returns a constant-probability model by
+    curve. In that case the function returns a constant-probability model by
     using slope=0 and a Laplace-smoothed class-rate intercept.
     """
     p = np.asarray(probability, dtype=np.float64).reshape(-1)
@@ -174,6 +175,29 @@ def estimate_payoffs(
     )
 
 
+def payoff_trim_sensitivity(
+    horizon_simple_return: np.ndarray,
+    *,
+    event_hurdle_bps: float,
+    trim_fractions: Iterable[float] = (0.0, 0.025, 0.05),
+) -> list[dict[str, float | int]]:
+    """Return comparable payoff estimates without selecting a preferred trim.
+
+    This is a diagnostic helper for the V3 research reports. It deliberately
+    does not choose the trim fraction from OOS/test performance; callers should
+    report the sensitivity and keep policy/model selection on validation data.
+    """
+    rows: list[dict[str, float | int]] = []
+    for trim_fraction in trim_fractions:
+        payoff = estimate_payoffs(
+            horizon_simple_return,
+            event_hurdle_bps=event_hurdle_bps,
+            trim_fraction=float(trim_fraction),
+        )
+        rows.append(payoff.to_dict())
+    return rows
+
+
 def expected_value(
     calibrated_probability: np.ndarray,
     payoff: PayoffEstimate,
@@ -208,6 +232,13 @@ def ev_commitment_backtest(
     estimates consistent with the decision cadence. Realized P&L is accumulated
     from the actual next-hour return series and cost is charged only when the
     realized position changes.
+
+    ``exit_ev_threshold`` is an *additional margin* around the economically
+    neutral HOLD-vs-EXIT boundary. While already long, exiting costs one-way
+    execution cost immediately, so the baseline exit condition is
+    ``gross_ev <= -one_way_cost_rate``. The historical value ``0.0`` therefore
+    means "exit only when holding is worse than paying the exit cost", not
+    "exit at any negative gross EV".
     """
     from backend.ml.evaluation import _performance_metrics
 
@@ -236,7 +267,10 @@ def ev_commitment_backtest(
                 if decision_ev > entry_margin:
                     next_position = 1.0
             else:
-                decision_ev = gross_ev
+                # Compare holding the position with exiting now. Exiting has an
+                # immediate one-way execution cost, so a mildly negative gross
+                # EV can still be economically preferable to paying that cost.
+                decision_ev = gross_ev + one_way_cost_rate
                 if decision_ev <= exit_ev_threshold:
                     next_position = 0.0
             ev_values[idx] = decision_ev
