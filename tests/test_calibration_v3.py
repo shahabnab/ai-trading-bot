@@ -4,6 +4,7 @@ from backend.ml.calibration import (
     estimate_payoffs,
     ev_commitment_backtest,
     fit_platt_scaler,
+    payoff_trim_sensitivity,
     trimmed_mean,
 )
 
@@ -31,6 +32,18 @@ def test_payoff_estimate_uses_fixed_hurdle():
     assert payoff.mean_event_return > 0.005
 
 
+def test_payoff_trim_sensitivity_reports_without_selecting():
+    returns = np.asarray([-0.01] * 40 + [0.006] * 38 + [0.03, 0.08])
+    rows = payoff_trim_sensitivity(
+        returns,
+        event_hurdle_bps=50.0,
+        trim_fractions=(0.0, 0.05),
+    )
+    assert [row["trim_fraction"] for row in rows] == [0.0, 0.05]
+    assert rows[0]["event_count"] == rows[1]["event_count"]
+    assert rows[0]["mean_event_return"] != rows[1]["mean_event_return"]
+
+
 def test_ev_backtest_redecides_only_at_horizon_boundaries():
     probability = np.asarray([0.95, 0.01, 0.01, 0.95, 0.01, 0.01], dtype=float)
     actual = np.zeros_like(probability)
@@ -51,3 +64,30 @@ def test_ev_backtest_redecides_only_at_horizon_boundaries():
     assert np.isfinite(ev[3])
     assert metrics["trade_count"] >= 1
     assert np.sum(turnovers) >= 1.0
+
+
+def test_ev_backtest_does_not_exit_for_small_negative_edge_below_exit_cost():
+    # Payoffs are +2% for the event and -1% otherwise. At p=0.30 the gross
+    # EV is -0.10%, which is negative but still better than paying a 0.25%
+    # exit cost immediately. At p=0.00 the gross EV is -1%, so exit is justified.
+    probability = np.asarray([0.95, 0.30, 0.00], dtype=float)
+    actual = np.zeros_like(probability)
+    payoff = estimate_payoffs(
+        np.asarray([-0.01] * 20 + [0.02] * 20),
+        event_hurdle_bps=50.0,
+        trim_fraction=0.0,
+    )
+    _, _, positions, turnovers, ev = ev_commitment_backtest(
+        probability,
+        actual,
+        payoff=payoff,
+        one_way_cost_rate=0.0025,
+        horizon_hours=1,
+        entry_margin=0.0,
+        exit_ev_threshold=0.0,
+        force_flat_at_end=False,
+    )
+    assert positions.tolist() == [1.0, 1.0, 0.0]
+    assert turnovers.tolist() == [1.0, 0.0, 1.0]
+    assert ev[1] > 0.0
+    assert ev[2] < 0.0

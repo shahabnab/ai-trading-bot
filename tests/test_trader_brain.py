@@ -70,3 +70,43 @@ def test_experience_shadow_reward_trains_bandit(tmp_path: Path) -> None:
     bandit = LinUCBBandit(len(vector), alpha=0.0).fit_shadow_samples(samples)
     choice = bandit.choose(vector, valid_actions=("NO_TRADE","LONG"), min_samples=1, fallback_action="NO_TRADE")
     assert choice.action == "LONG"
+
+
+def test_expert_reliability_is_shrunk_toward_neutral_during_warmup(tmp_path: Path) -> None:
+    history = build_trader_feature_history(candles())
+    latest = history[-1]
+    technical = technical_expert(
+        latest.technical,
+        realized_vol_24h=latest.realized_vol_24h,
+        timestamp=latest.timestamp,
+    )
+    regime = RegimePosterior(
+        (0.05, 0.10, 0.60, 0.15, 0.10),
+        0.65,
+        ("s0", "s1", "s2", "s3", "s4"),
+        "test",
+        1.0,
+        latest.timestamp,
+    )
+    gate = ReliabilityWeightedGate().combine(regime, [technical])
+    store = TraderExperienceStore(tmp_path / "reliability.sqlite3")
+    store.record(
+        model_id="brain",
+        feature_timestamp=100,
+        target_timestamp=200,
+        reference_price=100.0,
+        position_before="FLAT",
+        action="LONG",
+        gate_vector=gate.feature_vector,
+        bandit_vector=tuple(gate.feature_vector) + (regime.entropy, 0.0),
+        gate=gate,
+        experts=[technical],
+        regime=regime,
+        estimated_one_way_cost=0.001,
+    )
+    assert store.resolve_due(model_id="brain", current_timestamp=200, current_price=102.0) == 1
+
+    raw = store.expert_reliability("brain", prior_samples=0.0)["technical"]
+    shrunk = store.expert_reliability("brain", prior_samples=50.0)["technical"]
+    assert abs(shrunk - 1.0) < abs(raw - 1.0)
+    assert abs(shrunk - 1.0) <= abs(raw - 1.0) / 10.0

@@ -200,7 +200,25 @@ class TraderExperienceStore:
                 samples.append((vector, rewards))
         return samples
 
-    def expert_reliability(self, model_id: str, limit: int = 300) -> dict[str, float]:
+    def expert_reliability(
+        self,
+        model_id: str,
+        limit: int = 300,
+        *,
+        prior_samples: float = 50.0,
+    ) -> dict[str, float]:
+        """Estimate trailing expert reliability with sparse-sample shrinkage.
+
+        Raw reliability compares each expert's mean log loss with a uniform
+        three-class forecast. With only a handful of resolved forward samples,
+        that estimate is extremely noisy. We therefore shrink it toward the
+        neutral value 1.0 using ``n / (n + prior_samples)``. Setting
+        ``prior_samples=0`` reproduces the historical unshrunk estimate for
+        diagnostics, while the default prevents a few early outcomes from
+        materially reweighting the live mixture-of-experts gate.
+        """
+        if prior_samples < 0.0:
+            raise ValueError("prior_samples must be non-negative")
         losses: dict[str, list[float]] = {}
         for row in self._resolved(model_id, limit):
             try:
@@ -219,10 +237,16 @@ class TraderExperienceStore:
                     continue
                 losses.setdefault(str(expert.get("name", "unknown")), []).append(loss)
         uniform = float(np.log(3.0))
-        return {
-            name: float(np.clip(np.exp(-(float(np.mean(values)) - uniform)), 0.20, 1.50))
-            for name, values in losses.items() if values
-        }
+        reliability: dict[str, float] = {}
+        for name, values in losses.items():
+            if not values:
+                continue
+            raw = float(np.clip(np.exp(-(float(np.mean(values)) - uniform)), 0.20, 1.50))
+            n = float(len(values))
+            weight = 1.0 if prior_samples == 0.0 else n / (n + float(prior_samples))
+            shrunk = 1.0 + weight * (raw - 1.0)
+            reliability[name] = float(np.clip(shrunk, 0.20, 1.50))
+        return reliability
 
     def report(self, model_id: str) -> dict[str, Any]:
         with self.connection() as conn:
