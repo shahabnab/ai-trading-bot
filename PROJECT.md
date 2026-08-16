@@ -110,6 +110,8 @@ max order fraction <= max symbol fraction <= max total exposure fraction
 - ML feature timestamps must be strictly increasing and unique; duplicates fail closed.
 - The gap-safe technical feature definition is versioned as `btc-hourly-tech-v2-gap-safe` so results are not mixed with the earlier feature implementation.
 - Rebuild processed datasets whenever aggregation or labeling rules change.
+- Short-term PAPER entries fail closed when aligned microstructure is incomplete: at least 50% bucket coverage plus spread and order-book imbalance are required. Missing microstructure may never contribute positive confirmation votes. Existing positions must retain protective/time exit paths even during collector degradation.
+- The 15-minute collector keeps the previous bucket alive for one extra poll at rollover so late-reported deals are assigned by their own timestamp before that bucket is flushed.
 
 ## 8. ML evaluation policy
 
@@ -132,6 +134,7 @@ Required reporting/ablations as the research phase expands:
 - V3 long/flat exit decisions are cost-aware: while already long, HOLD is compared with paying the immediate one-way exit cost. A mildly negative gross EV does not by itself justify an exit; the neutral boundary is `gross_ev = -one_way_cost_rate`, with any configured exit threshold treated as an additional policy margin around that boundary.
 - Payoff robustness must be reported across reasonable trim fractions (including untrimmed) without choosing the trim from untouched test/forward performance.
 - Volatility-conditioned payoff estimation is an ablation against the global payoff model, not an automatic replacement. LOW/NORMAL/HIGH cutoffs must be fitted only on the calibration slice from a causal state available at decision time (currently trailing `realized_vol_24h`), and local event/non-event payoff means must be shrunk toward the global calibration estimate before OOS evaluation.
+- Short-term benchmark comparison must be maturity-gated by completed trades per model: fewer than 50 is observational, 50–99 preliminary, 100–199 scoreboard eligible/tentative, and 200+ a mature comparison sample subject to regime coverage. Because horizons differ, raw portfolio return alone is not a fair comparison with 3h/12h V3; include expectancy per trade, return on deployed capital, Sharpe/Sortino, drawdown, turnover and invested fraction.
 - Trader-Brain expert reliability must be shrunk toward neutral reliability `1.0` during sparse forward warm-up. A handful of resolved observations must not materially reweight the mixture-of-experts gate; learned stacking/bandit promotion remains subject to their separate minimum-sample gates.
 - Existing frozen prospective artifacts remain immutable controls. Methodology changes apply to new research/versioned policies rather than silently rewriting past forward results.
 
