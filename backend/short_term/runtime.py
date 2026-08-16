@@ -194,12 +194,14 @@ def _decide(
     hold_minutes: float,
     unrealized_return: float,
     min_edge_bps: float,
+    round_trip_cost_bps: float,
 ) -> ShortTermDecision:
     kwargs = dict(
         long_open=long_open,
         hold_minutes=hold_minutes,
         unrealized_return=unrealized_return,
         min_edge_bps=min_edge_bps,
+        round_trip_cost_bps=round_trip_cost_bps,
     )
     if model_id == MOMENTUM_ID:
         return decide_momentum(features, **kwargs)
@@ -238,6 +240,15 @@ async def run_short_term_once(
     # trading noise that cannot pay its execution costs.
     min_edge_bps = round_trip_cost_bps + 15.0
 
+    signal_close = Decimal(str(features.close))
+    signal_execution_drift_bps = (
+        float((quote.last / signal_close - Decimal("1")) * Decimal("10000"))
+        if signal_close > 0
+        else 0.0
+    )
+    feature_close_ms = features.timestamp + BUCKET_MS
+    feature_age_seconds = max(0.0, (int(datetime.now(UTC).timestamp() * 1000) - feature_close_ms) / 1000.0)
+
     feature_log = state_root / "features.jsonl"
     if not dry_run and _last_feature_timestamp(feature_log) != features.timestamp:
         _append_jsonl(feature_log, {
@@ -255,59 +266,86 @@ async def run_short_term_once(
             results.append({"model_id": spec.model_id, "status": "already_processed", "feature_timestamp": features.timestamp})
             continue
 
-        _, _, _, long_open, hold_minutes, unrealized_return = _position_context(store, spec.model_id, quote.last)
-        decision = _decide(
-            spec.model_id,
-            features,
-            long_open=long_open,
-            hold_minutes=hold_minutes,
-            unrealized_return=unrealized_return,
-            min_edge_bps=min_edge_bps,
-        )
-        executed, trade, approved, risk_reason = _execute(
-            store,
-            risk,
-            model_id=spec.model_id,
-            decision=decision,
-            price=quote.last,
-            dry_run=dry_run,
-        )
-        signal = "BUY" if executed == "BUY" else "SELL" if executed == "SELL" else "HOLD"
-        reason = (
-            f"15m {spec.display_name}; {decision.reason} "
-            f"round_trip_cost={round_trip_cost_bps:.1f}bps; RiskManager={risk_reason}"
-        )
-        if not dry_run:
-            store.record_decision(
+        try:
+            _, _, _, long_open, hold_minutes, unrealized_return = _position_context(store, spec.model_id, quote.last)
+            decision = _decide(
                 spec.model_id,
-                symbol="BTCUSDT",
-                signal=signal,
-                confidence=decision.confidence,
-                approved=approved,
-                reason=reason,
-                strategy_version="short-term-v1",
-                market_price=quote.last,
+                features,
+                long_open=long_open,
+                hold_minutes=hold_minutes,
+                unrealized_return=unrealized_return,
+                min_edge_bps=min_edge_bps,
+                round_trip_cost_bps=round_trip_cost_bps,
             )
+            executed, trade, approved, risk_reason = _execute(
+                store,
+                risk,
+                model_id=spec.model_id,
+                decision=decision,
+                price=quote.last,
+                dry_run=dry_run,
+            )
+            signal = "BUY" if executed == "BUY" else "SELL" if executed == "SELL" else "HOLD"
+            reason = (
+                f"15m {spec.display_name}; {decision.reason} "
+                f"round_trip_cost={round_trip_cost_bps:.1f}bps; RiskManager={risk_reason}"
+            )
+            if not dry_run:
+                store.record_decision(
+                    spec.model_id,
+                    symbol="BTCUSDT",
+                    signal=signal,
+                    confidence=decision.confidence,
+                    approved=approved,
+                    reason=reason,
+                    strategy_version="short-term-v1",
+                    market_price=quote.last,
+                )
 
-        result = {
-            "recorded_at": datetime.now(UTC).isoformat(),
-            "model_id": spec.model_id,
-            "display_name": spec.display_name,
-            "feature_timestamp": features.timestamp,
-            "feature_time_utc": datetime.fromtimestamp(features.timestamp / 1000.0, UTC).isoformat(),
-            "market_price": str(quote.last),
-            "features": features.to_dict(),
-            "microstructure": micro,
-            "decision": decision.to_dict(),
-            "signal": signal,
-            "executed_action": executed,
-            "approved": approved,
-            "trade": trade,
-            "round_trip_cost_bps": round_trip_cost_bps,
-            "min_edge_bps": min_edge_bps,
-            "dry_run": dry_run,
-            "reason": reason,
-        }
+            result = {
+                "status": "ok",
+                "recorded_at": datetime.now(UTC).isoformat(),
+                "model_id": spec.model_id,
+                "display_name": spec.display_name,
+                "feature_timestamp": features.timestamp,
+                "feature_time_utc": datetime.fromtimestamp(features.timestamp / 1000.0, UTC).isoformat(),
+                "signal_close": str(signal_close),
+                "market_price": str(quote.last),
+                "signal_execution_drift_bps": signal_execution_drift_bps,
+                "feature_age_seconds": feature_age_seconds,
+                "features": features.to_dict(),
+                "microstructure": micro,
+                "decision": decision.to_dict(),
+                "signal": signal,
+                "executed_action": executed,
+                "approved": approved,
+                "trade": trade,
+                "round_trip_cost_bps": round_trip_cost_bps,
+                "min_edge_bps": min_edge_bps,
+                "dry_run": dry_run,
+                "reason": reason,
+            }
+        except Exception as exc:
+            # Per-model isolation boundary: one paper ledger/order failure must
+            # never prevent the other benchmark from producing its decision.
+            result = {
+                "status": "error",
+                "recorded_at": datetime.now(UTC).isoformat(),
+                "model_id": spec.model_id,
+                "display_name": spec.display_name,
+                "feature_timestamp": features.timestamp,
+                "feature_time_utc": datetime.fromtimestamp(features.timestamp / 1000.0, UTC).isoformat(),
+                "signal_close": str(signal_close),
+                "market_price": str(quote.last),
+                "signal_execution_drift_bps": signal_execution_drift_bps,
+                "feature_age_seconds": feature_age_seconds,
+                "round_trip_cost_bps": round_trip_cost_bps,
+                "min_edge_bps": min_edge_bps,
+                "dry_run": dry_run,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+
         results.append(result)
         if not dry_run:
             _write_json(latest_path, result)
