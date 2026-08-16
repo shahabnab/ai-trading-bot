@@ -2,6 +2,7 @@ import numpy as np
 
 from backend.ml.calibration import (
     estimate_payoffs,
+    estimate_volatility_conditioned_payoffs,
     ev_commitment_backtest,
     fit_platt_scaler,
     payoff_trim_sensitivity,
@@ -42,6 +43,72 @@ def test_payoff_trim_sensitivity_reports_without_selecting():
     assert [row["trim_fraction"] for row in rows] == [0.0, 0.05]
     assert rows[0]["event_count"] == rows[1]["event_count"]
     assert rows[0]["mean_event_return"] != rows[1]["mean_event_return"]
+
+
+def _volatility_payoff_fixture(shrinkage_samples: float = 0.0):
+    volatility = np.linspace(0.01, 0.09, 90)
+    returns = np.asarray(
+        [-0.004] * 15 + [0.008] * 15
+        + [-0.004] * 15 + [0.020] * 15
+        + [-0.004] * 15 + [0.060] * 15,
+        dtype=float,
+    )
+    payoff = estimate_volatility_conditioned_payoffs(
+        returns,
+        volatility,
+        event_hurdle_bps=50.0,
+        trim_fraction=0.0,
+        shrinkage_samples=shrinkage_samples,
+    )
+    return payoff
+
+
+def test_volatility_conditioned_payoff_changes_magnitude_by_causal_state():
+    payoff = _volatility_payoff_fixture(shrinkage_samples=0.0)
+    probability = np.asarray([0.10, 0.10], dtype=float)
+    state = np.asarray([0.015, 0.085], dtype=float)
+    gross = payoff.expected_gross_return(probability, state)
+
+    assert payoff.low_vol_cutoff < payoff.high_vol_cutoff
+    assert payoff.low.sample_count > 0
+    assert payoff.normal.sample_count > 0
+    assert payoff.high.sample_count > 0
+    assert gross[0] < 0.0
+    assert gross[1] > 0.0
+    assert gross[1] > gross[0]
+
+
+def test_volatility_conditioned_payoff_shrinks_local_means_toward_global():
+    raw = _volatility_payoff_fixture(shrinkage_samples=0.0)
+    shrunk = _volatility_payoff_fixture(shrinkage_samples=100.0)
+
+    raw_distance = abs(raw.high.mean_event_return - raw.global_payoff.mean_event_return)
+    shrunk_distance = abs(shrunk.high.mean_event_return - shrunk.global_payoff.mean_event_return)
+    assert shrunk_distance < raw_distance
+    assert 0.0 < shrunk.high.event_shrinkage_weight < 1.0
+
+
+def test_ev_backtest_uses_volatility_state_for_conditioned_payoff():
+    payoff = _volatility_payoff_fixture(shrinkage_samples=0.0)
+    probability = np.asarray([0.10, 0.10], dtype=float)
+    actual = np.zeros_like(probability)
+    state = np.asarray([0.015, 0.085], dtype=float)
+
+    _, _, positions, turnovers, ev = ev_commitment_backtest(
+        probability,
+        actual,
+        payoff=payoff,
+        payoff_state=state,
+        one_way_cost_rate=0.0,
+        horizon_hours=1,
+        entry_margin=0.0,
+        force_flat_at_end=False,
+    )
+
+    assert positions.tolist() == [0.0, 1.0]
+    assert turnovers.tolist() == [0.0, 1.0]
+    assert ev[0] < 0.0
+    assert ev[1] > 0.0
 
 
 def test_ev_backtest_redecides_only_at_horizon_boundaries():
