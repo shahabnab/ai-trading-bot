@@ -129,6 +129,10 @@ Required reporting/ablations as the research phase expands:
 - Sortino uses downside deviation relative to a zero minimum acceptable return (`MAR=0`), retaining non-negative observations as zero downside.
 - Strategy `trade_count` means entry count; `round_trip_count` means completed exits; `position_change_count` records all non-zero position changes.
 - XGBoost early stopping must persist the pruned best booster itself. A serialized fold model must contain exactly `best_iteration + 1` boosted rounds so reloaded inference matches the model evaluated OOS.
+- V3 long/flat exit decisions are cost-aware: while already long, HOLD is compared with paying the immediate one-way exit cost. A mildly negative gross EV does not by itself justify an exit; the neutral boundary is `gross_ev = -one_way_cost_rate`, with any configured exit threshold treated as an additional policy margin around that boundary.
+- Payoff robustness must be reported across reasonable trim fractions (including untrimmed) without choosing the trim from untouched test/forward performance.
+- Trader-Brain expert reliability must be shrunk toward neutral reliability `1.0` during sparse forward warm-up. A handful of resolved observations must not materially reweight the mixture-of-experts gate; learned stacking/bandit promotion remains subject to their separate minimum-sample gates.
+- Existing frozen prospective artifacts remain immutable controls. Methodology changes apply to new research/versioned policies rather than silently rewriting past forward results.
 
 ## 9. Security rules
 
