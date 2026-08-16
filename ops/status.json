@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "generated_at": null,
+  "overall_status": "awaiting_server_install",
+  "issues": [
+    {
+      "severity": "info",
+      "code": "awaiting_server_install",
+      "message": "The ops-status branch is ready. Install the VPS supervisor to begin hourly publication."
+    }
+  ]
+}
