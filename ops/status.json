@@ -1,12 +1,316 @@
 {
-  "schema_version": 1,
-  "generated_at": null,
-  "overall_status": "awaiting_server_install",
+  "artifacts": {
+    "v3-25bps-fullcontext-12h": {
+      "expected_model_sha256": "f3743bcafc14ef1f2711df4b4d76821b4638ceaade7fab09c6af2905c771d628",
+      "manifest_exists": true,
+      "model_exists": true,
+      "model_sha256": "f3743bcafc14ef1f2711df4b4d76821b4638ceaade7fab09c6af2905c771d628",
+      "sha_matches_manifest": true,
+      "standardizer_exists": true
+    },
+    "v3-50bps-technical-3h": {
+      "expected_model_sha256": "f1e7a3c1d5a4a0c1ff3aaf64f70695f5620265c126ce096a577331876b6cb721",
+      "manifest_exists": true,
+      "model_exists": true,
+      "model_sha256": "f1e7a3c1d5a4a0c1ff3aaf64f70695f5620265c126ce096a577331876b6cb721",
+      "sha_matches_manifest": true,
+      "standardizer_exists": true
+    }
+  },
+  "generated_at": "2026-08-16T12:18:18.863716+00:00",
+  "git": {
+    "branch": "step-5-live-paper-dashboard",
+    "head": "0a2b6dcf4dff0a84319a80122c4d854704894b1a",
+    "origin": "https://github.com/shahabnab/ai-trading-bot.git",
+    "tracked_dirty": true
+  },
+  "guardrails": {
+    "automatic_code_fix_scope": "ops/deployment/observability only; no strategy/risk/model/threshold changes",
+    "frozen_v3_must_not_retrain": true,
+    "live_trading_expected": false,
+    "trading_mode": "paper"
+  },
+  "hostname": "ubuntu-8gb-hel1-1",
   "issues": [
     {
-      "severity": "info",
-      "code": "awaiting_server_install",
-      "message": "The ops-status branch is ready. Install the VPS supervisor to begin hourly publication."
+      "code": "tracked_code_drift",
+      "message": "server has tracked code changes not committed to Git",
+      "severity": "warning"
     }
-  ]
+  ],
+  "overall_status": "degraded",
+  "paper": {
+    "available": true,
+    "database": "/opt/ai-trading-bot/data/paper_trading.sqlite3",
+    "mark_price_btcusdt": "62987",
+    "models": {
+      "trader-brain-bandit-v1": {
+        "cash_usdt": "1000",
+        "display_name": "Trader Brain + RL",
+        "equity_usdt": "1000",
+        "initial_equity_usdt": "1000",
+        "last_decision": {
+          "approved": 1,
+          "confidence": 0.7003690277789776,
+          "created_at": "2026-08-16T12:00:28.798698+00:00",
+          "id": 4,
+          "market_price": "62987",
+          "model_id": "trader-brain-bandit-v1",
+          "reason": "policy=supervised_warmup; gate=reliability_weighted; regime_entropy=0.000; Net edge -0.2295% does not clear the cost/uncertainty hurdle. RiskManager=No simulated order required.",
+          "signal": "HOLD",
+          "strategy_version": "trader-brain-v1",
+          "symbol": "BTCUSDT"
+        },
+        "last_trade": null,
+        "performance": {
+          "closed_trades": 0,
+          "decision_count": 1,
+          "realized_pnl_usdt": "0",
+          "total_fees_usdt": "0",
+          "trade_count": 0,
+          "win_rate": null,
+          "winning_trades": 0
+        },
+        "position_value_usdt": "0",
+        "positions": [],
+        "return_fraction": 0.0
+      },
+      "trader-brain-v1": {
+        "cash_usdt": "1000",
+        "display_name": "Trader Brain V1",
+        "equity_usdt": "1000",
+        "initial_equity_usdt": "1000",
+        "last_decision": {
+          "approved": 1,
+          "confidence": 0.7003690277789776,
+          "created_at": "2026-08-16T12:00:28.775105+00:00",
+          "id": 3,
+          "market_price": "62987",
+          "model_id": "trader-brain-v1",
+          "reason": "policy=supervised_moe; gate=reliability_weighted; regime_entropy=0.000; Net edge -0.2295% does not clear the cost/uncertainty hurdle. RiskManager=No simulated order required.",
+          "signal": "HOLD",
+          "strategy_version": "trader-brain-v1",
+          "symbol": "BTCUSDT"
+        },
+        "last_trade": null,
+        "performance": {
+          "closed_trades": 0,
+          "decision_count": 1,
+          "realized_pnl_usdt": "0",
+          "total_fees_usdt": "0",
+          "trade_count": 0,
+          "win_rate": null,
+          "winning_trades": 0
+        },
+        "position_value_usdt": "0",
+        "positions": [],
+        "return_fraction": 0.0
+      },
+      "v3-25bps-fullcontext-12h": {
+        "cash_usdt": "1000",
+        "display_name": "V3 12h Economic",
+        "equity_usdt": "1000",
+        "initial_equity_usdt": "1000",
+        "last_decision": {
+          "approved": 1,
+          "confidence": 0.39427365617592175,
+          "created_at": "2026-08-16T12:00:25.735624+00:00",
+          "id": 1,
+          "market_price": "62987",
+          "model_id": "v3-25bps-fullcontext-12h",
+          "reason": "Frozen V3 policy @ 2026-08-16T12:00:00+00:00; p=0.394274; gross_ev=-0.140355%; decision_ev=-0.640355%; entry_margin=+0.000000%; horizon=12h",
+          "signal": "HOLD",
+          "strategy_version": "v3-frozen-forward:v3-25bps-fullcontext-12h:f3743bcafc14",
+          "symbol": "BTCUSDT"
+        },
+        "last_trade": null,
+        "performance": {
+          "closed_trades": 0,
+          "decision_count": 1,
+          "realized_pnl_usdt": "0",
+          "total_fees_usdt": "0",
+          "trade_count": 0,
+          "win_rate": null,
+          "winning_trades": 0
+        },
+        "position_value_usdt": "0",
+        "positions": [],
+        "return_fraction": 0.0
+      },
+      "v3-50bps-technical-3h": {
+        "cash_usdt": "1000",
+        "display_name": "V3 3h Signal Control",
+        "equity_usdt": "1000",
+        "initial_equity_usdt": "1000",
+        "last_decision": {
+          "approved": 1,
+          "confidence": 0.11954791546581867,
+          "created_at": "2026-08-16T12:00:26.602438+00:00",
+          "id": 2,
+          "market_price": "62987",
+          "model_id": "v3-50bps-technical-3h",
+          "reason": "Frozen V3 policy @ 2026-08-16T12:00:00+00:00; p=0.119548; gross_ev=-0.055871%; decision_ev=-0.555871%; entry_margin=+0.000000%; horizon=3h",
+          "signal": "HOLD",
+          "strategy_version": "v3-frozen-forward:v3-50bps-technical-3h:f1e7a3c1d5a4",
+          "symbol": "BTCUSDT"
+        },
+        "last_trade": null,
+        "performance": {
+          "closed_trades": 0,
+          "decision_count": 1,
+          "realized_pnl_usdt": "0",
+          "total_fees_usdt": "0",
+          "trade_count": 0,
+          "win_rate": null,
+          "winning_trades": 0
+        },
+        "position_value_usdt": "0",
+        "positions": [],
+        "return_fraction": 0.0
+      }
+    }
+  },
+  "recent_forward_errors": [],
+  "schema_version": 1,
+  "services": {
+    "ai-trading-all-forward.service": {
+      "ActiveState": "inactive",
+      "ExecMainExitTimestamp": "Sun 2026-08-16 12:05:18 UTC",
+      "ExecMainStartTimestamp": "Sun 2026-08-16 12:05:09 UTC",
+      "ExecMainStatus": "0",
+      "Id": "ai-trading-all-forward.service",
+      "LoadState": "loaded",
+      "Result": "success",
+      "SubState": "dead",
+      "query_rc": 0,
+      "unit": "ai-trading-all-forward.service"
+    },
+    "ai-trading-all-forward.timer": {
+      "ActiveState": "active",
+      "Id": "ai-trading-all-forward.timer",
+      "LoadState": "loaded",
+      "NextElapseUSecRealtime": "Sun 2026-08-16 13:05:17 UTC",
+      "Result": "success",
+      "SubState": "waiting",
+      "query_rc": 0,
+      "unit": "ai-trading-all-forward.timer"
+    },
+    "ai-trading-backend.service": {
+      "ActiveState": "active",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStartTimestamp": "Sat 2026-08-15 15:51:21 UTC",
+      "ExecMainStatus": "0",
+      "Id": "ai-trading-backend.service",
+      "LoadState": "loaded",
+      "Result": "success",
+      "SubState": "running",
+      "query_rc": 0,
+      "unit": "ai-trading-backend.service"
+    },
+    "ai-trading-frontend.service": {
+      "ActiveState": "active",
+      "ExecMainExitTimestamp": "",
+      "ExecMainStartTimestamp": "Sat 2026-08-15 15:51:21 UTC",
+      "ExecMainStatus": "0",
+      "Id": "ai-trading-frontend.service",
+      "LoadState": "loaded",
+      "Result": "success",
+      "SubState": "running",
+      "query_rc": 0,
+      "unit": "ai-trading-frontend.service"
+    },
+    "ai-trading-ops-supervisor.timer": {
+      "ActiveState": "active",
+      "Id": "ai-trading-ops-supervisor.timer",
+      "LoadState": "loaded",
+      "NextElapseUSecRealtime": "Sun 2026-08-16 13:15:15 UTC",
+      "Result": "success",
+      "SubState": "waiting",
+      "query_rc": 0,
+      "unit": "ai-trading-ops-supervisor.timer"
+    }
+  },
+  "strategies": {
+    "trader-brain-bandit-v1": {
+      "age_minutes": 78.31439526666666,
+      "decision_ev": -0.0022948201344287797,
+      "display_name": "Trader Brain + RL",
+      "driver": "trader_brain_rl",
+      "feature_time_utc": "2026-08-16T11:00:00+00:00",
+      "learning": {
+        "average_market_return": 0.0,
+        "average_reward": 0.0,
+        "experience_count": 1,
+        "expert_reliability": {},
+        "model_id": "trader-brain-bandit-v1",
+        "resolved_count": 0
+      },
+      "policy_source": "supervised_warmup",
+      "probability": 0.041653593648567536,
+      "recorded_at": "2026-08-16T12:00:28.812538+00:00",
+      "signal": "NO_TRADE",
+      "trade": null
+    },
+    "trader-brain-v1": {
+      "age_minutes": 78.31439526666666,
+      "decision_ev": -0.0022948201344287797,
+      "display_name": "Trader Brain V1",
+      "driver": "trader_brain",
+      "feature_time_utc": "2026-08-16T11:00:00+00:00",
+      "learning": {
+        "average_market_return": 0.0,
+        "average_reward": 0.0,
+        "experience_count": 1,
+        "expert_reliability": {},
+        "model_id": "trader-brain-v1",
+        "resolved_count": 0
+      },
+      "policy_source": "supervised_moe",
+      "probability": 0.041653593648567536,
+      "recorded_at": "2026-08-16T12:00:28.789519+00:00",
+      "signal": "NO_TRADE",
+      "trade": null
+    },
+    "v3-25bps-fullcontext-12h": {
+      "age_minutes": 18.31439526666667,
+      "decision_ev": -0.006403547764425916,
+      "display_name": "V3 12h Economic",
+      "driver": "frozen_v3",
+      "feature_time_utc": "2026-08-16T12:00:00+00:00",
+      "probability": 0.39427365617592175,
+      "recorded_at": "2026-08-16T12:00:25.742315+00:00",
+      "signal": "HOLD",
+      "trade": null
+    },
+    "v3-50bps-technical-3h": {
+      "age_minutes": 18.31439526666667,
+      "decision_ev": -0.005558706578954929,
+      "display_name": "V3 3h Signal Control",
+      "driver": "frozen_v3",
+      "feature_time_utc": "2026-08-16T12:00:00+00:00",
+      "probability": 0.11954791546581867,
+      "recorded_at": "2026-08-16T12:00:26.607967+00:00",
+      "signal": "HOLD",
+      "trade": null
+    }
+  },
+  "system": {
+    "cpu_count": 4,
+    "disk": {
+      "free_bytes": 69873586176,
+      "free_fraction": 0.87037908753108,
+      "total_bytes": 80279486464,
+      "used_bytes": 7107641344
+    },
+    "load_average": {
+      "15m": 0.2705078125,
+      "1m": 0.2958984375,
+      "5m": 0.20263671875
+    },
+    "memory": {
+      "available_bytes": 7387090944,
+      "available_fraction": 0.909480082844635,
+      "total_bytes": 8122322944
+    }
+  }
 }
