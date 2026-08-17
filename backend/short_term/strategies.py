@@ -11,6 +11,13 @@ class ShortTermDecision:
     confidence: float
     edge_proxy_bps: float
     reason: str
+    # Diagnostic metadata. ``confidence`` is kept for the existing RiskManager
+    # contract; it is a transformed checklist score, not a calibrated win
+    # probability. ``confirmation_score`` exposes the underlying checklist
+    # fraction directly for audit/calibration.
+    confirmation_score: float = 0.0
+    setup_ready: bool = False
+    microstructure_ready: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -53,12 +60,32 @@ def decide_momentum(
 
     if long_open:
         if unrealized_return <= -0.008:
-            return ShortTermDecision("EXIT", 1.0, abs(unrealized_return) * 10_000.0, "Protective exit: paper position fell 0.8% from entry.")
+            return ShortTermDecision(
+                "EXIT",
+                1.0,
+                abs(unrealized_return) * 10_000.0,
+                "Protective exit: paper position fell 0.8% from entry.",
+            )
         if hold_minutes >= max_hold_minutes:
-            return ShortTermDecision("EXIT", 0.8, abs(f.return_1h) * 10_000.0, f"Time exit after {hold_minutes:.0f} minutes.")
+            return ShortTermDecision(
+                "EXIT",
+                0.8,
+                abs(f.return_1h) * 10_000.0,
+                f"Time exit after {hold_minutes:.0f} minutes.",
+            )
         if f.return_15m < -0.0015 and f.ema_fast_slope_bps < 0:
-            return ShortTermDecision("EXIT", 0.75, abs(f.return_15m) * 10_000.0, "Momentum reversed on the latest 15-minute bar.")
-        return ShortTermDecision("HOLD", 0.6, abs(f.return_1h) * 10_000.0, "Existing momentum position remains inside exit limits.")
+            return ShortTermDecision(
+                "EXIT",
+                0.75,
+                abs(f.return_15m) * 10_000.0,
+                "Momentum reversed on the latest 15-minute bar.",
+            )
+        return ShortTermDecision(
+            "HOLD",
+            0.6,
+            abs(f.return_1h) * 10_000.0,
+            "Existing momentum position remains inside exit limits.",
+        )
 
     micro_ready = _microstructure_ready(f)
     components = [
@@ -80,12 +107,16 @@ def decide_momentum(
         0.0,
     )
     confidence = _clamp01(0.35 + 0.65 * strength)
-    if micro_ready and strength >= 0.72 and move_proxy_bps >= min_edge_bps:
+    setup_ready = micro_ready and strength >= 0.72
+    if setup_ready and move_proxy_bps >= min_edge_bps:
         return ShortTermDecision(
             "ENTER_LONG",
             confidence,
             move_proxy_bps,
             f"Momentum confirmation {strength:.0%}; move proxy {move_proxy_bps:.1f} bps clears {min_edge_bps:.1f} bps cost hurdle.",
+            confirmation_score=strength,
+            setup_ready=True,
+            microstructure_ready=micro_ready,
         )
     if not micro_ready:
         return ShortTermDecision(
@@ -93,12 +124,18 @@ def decide_momentum(
             confidence,
             move_proxy_bps,
             f"No momentum entry: microstructure incomplete (coverage={f.microstructure_coverage:.0%}, spread={'ok' if f.spread_bps is not None else 'missing'}, book={'ok' if f.book_imbalance is not None else 'missing'}).",
+            confirmation_score=strength,
+            setup_ready=False,
+            microstructure_ready=False,
         )
     return ShortTermDecision(
         "HOLD",
         confidence,
         move_proxy_bps,
         f"No momentum entry: confirmation={strength:.0%}, move_proxy={move_proxy_bps:.1f} bps, required={min_edge_bps:.1f} bps.",
+        confirmation_score=strength,
+        setup_ready=setup_ready,
+        microstructure_ready=micro_ready,
     )
 
 
@@ -115,9 +152,19 @@ def decide_mean_reversion(
     """Cost-aware oversold mean-reversion benchmark on completed 15m data."""
     if long_open:
         if unrealized_return <= -0.009:
-            return ShortTermDecision("EXIT", 1.0, abs(unrealized_return) * 10_000.0, "Protective exit: mean-reversion position fell 0.9% from entry.")
+            return ShortTermDecision(
+                "EXIT",
+                1.0,
+                abs(unrealized_return) * 10_000.0,
+                "Protective exit: mean-reversion position fell 0.9% from entry.",
+            )
         if hold_minutes >= max_hold_minutes:
-            return ShortTermDecision("EXIT", 0.8, abs(f.vwap_distance_bps), f"Time exit after {hold_minutes:.0f} minutes.")
+            return ShortTermDecision(
+                "EXIT",
+                0.8,
+                abs(f.vwap_distance_bps),
+                f"Time exit after {hold_minutes:.0f} minutes.",
+            )
 
         target_reached = f.bollinger_z >= -0.10 or f.rsi_14 >= 54.0 or f.vwap_distance_bps >= -5.0
         gross_unrealized_bps = unrealized_return * 10_000.0
@@ -135,7 +182,12 @@ def decide_mean_reversion(
                 max(gross_unrealized_bps, 0.0),
                 f"Mean-reversion target touched, but gross gain {gross_unrealized_bps:.1f} bps does not yet clear {round_trip_cost_bps:.1f} bps round-trip cost.",
             )
-        return ShortTermDecision("HOLD", 0.6, abs(f.vwap_distance_bps), "Oversold position has not yet reached its mean-reversion exit.")
+        return ShortTermDecision(
+            "HOLD",
+            0.6,
+            abs(f.vwap_distance_bps),
+            "Oversold position has not yet reached its mean-reversion exit.",
+        )
 
     micro_ready = _microstructure_ready(f)
     components = [
@@ -155,12 +207,16 @@ def decide_mean_reversion(
         0.0,
     )
     confidence = _clamp01(0.35 + 0.65 * strength)
-    if micro_ready and strength >= 0.75 and displacement_bps >= min_edge_bps:
+    setup_ready = micro_ready and strength >= 0.75
+    if setup_ready and displacement_bps >= min_edge_bps:
         return ShortTermDecision(
             "ENTER_LONG",
             confidence,
             displacement_bps,
             f"Oversold confirmation {strength:.0%}; displacement {displacement_bps:.1f} bps clears {min_edge_bps:.1f} bps cost hurdle.",
+            confirmation_score=strength,
+            setup_ready=True,
+            microstructure_ready=micro_ready,
         )
     if not micro_ready:
         return ShortTermDecision(
@@ -168,10 +224,16 @@ def decide_mean_reversion(
             confidence,
             displacement_bps,
             f"No mean-reversion entry: microstructure incomplete (coverage={f.microstructure_coverage:.0%}, spread={'ok' if f.spread_bps is not None else 'missing'}, book={'ok' if f.book_imbalance is not None else 'missing'}).",
+            confirmation_score=strength,
+            setup_ready=False,
+            microstructure_ready=False,
         )
     return ShortTermDecision(
         "HOLD",
         confidence,
         displacement_bps,
         f"No mean-reversion entry: confirmation={strength:.0%}, displacement={displacement_bps:.1f} bps, required={min_edge_bps:.1f} bps.",
+        confirmation_score=strength,
+        setup_ready=setup_ready,
+        microstructure_ready=micro_ready,
     )
