@@ -129,11 +129,14 @@ def _classify_hold(
     *,
     decision_action: str,
     setup_ready: bool,
+    long_open_at_decision: bool,
     return_2h_bps: float,
     official_threshold_bps: float,
 ) -> str:
     if decision_action == "ENTER_LONG":
         return "ENTRY_SIGNAL"
+    if long_open_at_decision:
+        return "POSITION_MANAGEMENT"
     if not setup_ready:
         return "NO_SETUP"
     if return_2h_bps >= official_threshold_bps:
@@ -200,9 +203,11 @@ def resolve_mature_outcomes(
         round_trip_cost = _float(decision.get("round_trip_cost_bps"), 0.0)
         setup_ready = bool(decision.get("setup_ready", False))
         decision_action = str(decision.get("decision_action", "HOLD"))
+        long_open_at_decision = bool(decision.get("long_open_at_decision", False))
         classification = _classify_hold(
             decision_action=decision_action,
             setup_ready=setup_ready,
+            long_open_at_decision=long_open_at_decision,
             return_2h_bps=returns_bps["2h"],
             official_threshold_bps=official_threshold,
         )
@@ -238,6 +243,7 @@ def resolve_mature_outcomes(
             "confidence": _float(decision.get("confidence"), 0.0),
             "confirmation_score": _float(decision.get("confirmation_score"), 0.0),
             "setup_ready": setup_ready,
+            "long_open_at_decision": long_open_at_decision,
             "edge_proxy_bps": _float(decision.get("edge_proxy_bps"), 0.0),
             "official_threshold_bps": official_threshold,
             "round_trip_cost_bps": round_trip_cost,
