@@ -104,7 +104,7 @@ export default function ShortTermDiagnostics() {
 
         const returns = typeof row.returns_bps === "object" && row.returns_bps !== null ? row.returns_bps as JsonRecord : {};
         const return2h = num(returns["2h"]);
-        const bucketLabel = confidenceBucket(num(row.confidence));
+        const bucketLabel = confidenceBucket(num(row.confirmation_score));
         const bucket = buckets.get(bucketLabel) ?? { label: bucketLabel, samples: 0, positive: 0, returnSum: 0 };
         bucket.samples += 1;
         bucket.returnSum += return2h;
