@@ -17,7 +17,7 @@
       "standardizer_exists": true
     }
   },
-  "generated_at": "2026-08-17T00:15:42.559951+00:00",
+  "generated_at": "2026-08-17T01:15:22.799479+00:00",
   "git": {
     "branch": "v3-payoff-ablation-experiment",
     "head": "aa15993b263be4047b2a7b32ddfa5dc74b74e73c",
@@ -42,7 +42,7 @@
   "paper": {
     "available": true,
     "database": "/opt/ai-trading-bot/data/paper_trading.sqlite3",
-    "mark_price_btcusdt": "62907",
+    "mark_price_btcusdt": "63101",
     "models": {
       "short-mean-reversion-15m": {
         "cash_usdt": "1000",
@@ -52,11 +52,11 @@
         "last_decision": {
           "approved": 1,
           "confidence": 0.75625,
-          "created_at": "2026-08-17T00:02:13.559255+00:00",
-          "id": 117,
-          "market_price": "62906",
+          "created_at": "2026-08-17T01:02:03.621182+00:00",
+          "id": 129,
+          "market_price": "63050",
           "model_id": "short-mean-reversion-15m",
-          "reason": "15m Intraday Mean Reversion 15m; No mean-reversion entry: confirmation=62%, displacement=15.8 bps, required=65.0 bps. round_trip_cost=50.0bps; RiskManager=No simulated order required.",
+          "reason": "15m Intraday Mean Reversion 15m; No mean-reversion entry: confirmation=62%, displacement=6.1 bps, required=65.0 bps. round_trip_cost=50.0bps; RiskManager=No simulated order required.",
           "signal": "HOLD",
           "strategy_version": "short-term-v1",
           "symbol": "BTCUSDT"
@@ -64,7 +64,7 @@
         "last_trade": null,
         "performance": {
           "closed_trades": 0,
-          "decision_count": 44,
+          "decision_count": 48,
           "realized_pnl_usdt": "0",
           "total_fees_usdt": "0",
           "trade_count": 0,
@@ -82,12 +82,12 @@
         "initial_equity_usdt": "1000",
         "last_decision": {
           "approved": 1,
-          "confidence": 0.8049999999999999,
-          "created_at": "2026-08-17T00:02:13.550497+00:00",
-          "id": 116,
-          "market_price": "62906",
+          "confidence": 0.675,
+          "created_at": "2026-08-17T01:02:03.612139+00:00",
+          "id": 128,
+          "market_price": "63050",
           "model_id": "short-momentum-15m",
-          "reason": "15m Intraday Momentum 15m; No momentum entry: confirmation=70%, move_proxy=0.6 bps, required=65.0 bps. round_trip_cost=50.0bps; RiskManager=No simulated order required.",
+          "reason": "15m Intraday Momentum 15m; No momentum entry: confirmation=50%, move_proxy=1.1 bps, required=65.0 bps. round_trip_cost=50.0bps; RiskManager=No simulated order required.",
           "signal": "HOLD",
           "strategy_version": "short-term-v1",
           "symbol": "BTCUSDT"
@@ -95,7 +95,7 @@
         "last_trade": null,
         "performance": {
           "closed_trades": 0,
-          "decision_count": 44,
+          "decision_count": 48,
           "realized_pnl_usdt": "0",
           "total_fees_usdt": "0",
           "trade_count": 0,
@@ -113,12 +113,12 @@
         "initial_equity_usdt": "1000",
         "last_decision": {
           "approved": 1,
-          "confidence": 0.43187443705154566,
-          "created_at": "2026-08-17T00:05:37.993265+00:00",
-          "id": 121,
-          "market_price": "62907",
+          "confidence": 0.43048041564959016,
+          "created_at": "2026-08-17T01:05:31.946480+00:00",
+          "id": 131,
+          "market_price": "63100",
           "model_id": "trader-brain-bandit-v1",
-          "reason": "policy=supervised_warmup; gate=reliability_weighted; regime_entropy=0.000; Net edge -0.2515% does not clear the cost/uncertainty hurdle. RiskManager=No simulated order required.",
+          "reason": "policy=supervised_warmup; gate=reliability_weighted; regime_entropy=0.000; Net edge -0.2517% does not clear the cost/uncertainty hurdle. RiskManager=No simulated order required.",
           "signal": "HOLD",
           "strategy_version": "trader-brain-v1",
           "symbol": "BTCUSDT"
@@ -126,7 +126,7 @@
         "last_trade": null,
         "performance": {
           "closed_trades": 0,
-          "decision_count": 13,
+          "decision_count": 14,
           "realized_pnl_usdt": "0",
           "total_fees_usdt": "0",
           "trade_count": 0,
@@ -144,12 +144,12 @@
         "initial_equity_usdt": "1000",
         "last_decision": {
           "approved": 1,
-          "confidence": 0.43187443705154566,
-          "created_at": "2026-08-17T00:05:37.969791+00:00",
-          "id": 120,
-          "market_price": "62907",
+          "confidence": 0.43048041564959016,
+          "created_at": "2026-08-17T01:05:31.923273+00:00",
+          "id": 130,
+          "market_price": "63100",
           "model_id": "trader-brain-v1",
-          "reason": "policy=supervised_moe; gate=reliability_weighted; regime_entropy=0.000; Net edge -0.2515% does not clear the cost/uncertainty hurdle. RiskManager=No simulated order required.",
+          "reason": "policy=supervised_moe; gate=reliability_weighted; regime_entropy=0.000; Net edge -0.2517% does not clear the cost/uncertainty hurdle. RiskManager=No simulated order required.",
           "signal": "HOLD",
           "strategy_version": "trader-brain-v1",
           "symbol": "BTCUSDT"
@@ -157,7 +157,7 @@
         "last_trade": null,
         "performance": {
           "closed_trades": 0,
-          "decision_count": 13,
+          "decision_count": 14,
           "realized_pnl_usdt": "0",
           "total_fees_usdt": "0",
           "trade_count": 0,
@@ -237,8 +237,8 @@
   "services": {
     "ai-trading-all-forward.service": {
       "ActiveState": "inactive",
-      "ExecMainExitTimestamp": "Mon 2026-08-17 00:05:38 UTC",
-      "ExecMainStartTimestamp": "Mon 2026-08-17 00:05:22 UTC",
+      "ExecMainExitTimestamp": "Mon 2026-08-17 01:05:32 UTC",
+      "ExecMainStartTimestamp": "Mon 2026-08-17 01:05:15 UTC",
       "ExecMainStatus": "0",
       "Id": "ai-trading-all-forward.service",
       "LoadState": "loaded",
@@ -251,7 +251,7 @@
       "ActiveState": "active",
       "Id": "ai-trading-all-forward.timer",
       "LoadState": "loaded",
-      "NextElapseUSecRealtime": "Mon 2026-08-17 01:05:09 UTC",
+      "NextElapseUSecRealtime": "Mon 2026-08-17 02:05:18 UTC",
       "Result": "success",
       "SubState": "waiting",
       "query_rc": 0,
@@ -305,8 +305,8 @@
     },
     "ai-trading-shortterm.service": {
       "ActiveState": "inactive",
-      "ExecMainExitTimestamp": "Mon 2026-08-17 00:02:13 UTC",
-      "ExecMainStartTimestamp": "Mon 2026-08-17 00:02:12 UTC",
+      "ExecMainExitTimestamp": "Mon 2026-08-17 01:02:03 UTC",
+      "ExecMainStartTimestamp": "Mon 2026-08-17 01:02:02 UTC",
       "ExecMainStatus": "0",
       "Id": "ai-trading-shortterm.service",
       "LoadState": "loaded",
@@ -319,7 +319,7 @@
       "ActiveState": "active",
       "Id": "ai-trading-shortterm.timer",
       "LoadState": "loaded",
-      "NextElapseUSecRealtime": "Mon 2026-08-17 00:17:04 UTC",
+      "NextElapseUSecRealtime": "Mon 2026-08-17 01:17:06 UTC",
       "Result": "success",
       "SubState": "waiting",
       "query_rc": 0,
@@ -328,120 +328,120 @@
   },
   "strategies": {
     "short-mean-reversion-15m": {
-      "age_minutes": 30.709332516666667,
+      "age_minutes": 30.37999131666667,
       "confidence": 0.75625,
       "display_name": "Intraday Mean Reversion 15m",
       "driver": "short_term",
-      "edge_proxy_bps": 15.807519752099042,
-      "feature_quality": 0.9981475,
-      "feature_time_utc": "2026-08-16T23:45:00+00:00",
-      "microstructure_coverage": 0.99259,
-      "recorded_at": "2026-08-17T00:02:13.564316+00:00",
+      "edge_proxy_bps": 6.129797824210876,
+      "feature_quality": 0.9997825,
+      "feature_time_utc": "2026-08-17T00:45:00+00:00",
+      "microstructure_coverage": 0.99913,
+      "recorded_at": "2026-08-17T01:02:03.626858+00:00",
       "round_trip_cost_bps": 50.0,
       "signal": "HOLD",
       "trade": null
     },
     "short-momentum-15m": {
-      "age_minutes": 30.709332516666667,
-      "confidence": 0.8049999999999999,
+      "age_minutes": 30.37999131666667,
+      "confidence": 0.675,
       "display_name": "Intraday Momentum 15m",
       "driver": "short_term",
-      "edge_proxy_bps": 0.6359401580313673,
-      "feature_quality": 0.9981475,
-      "feature_time_utc": "2026-08-16T23:45:00+00:00",
-      "microstructure_coverage": 0.99259,
-      "recorded_at": "2026-08-17T00:02:13.556037+00:00",
+      "edge_proxy_bps": 1.1128245075742171,
+      "feature_quality": 0.9997825,
+      "feature_time_utc": "2026-08-17T00:45:00+00:00",
+      "microstructure_coverage": 0.99913,
+      "recorded_at": "2026-08-17T01:02:03.617704+00:00",
       "round_trip_cost_bps": 50.0,
       "signal": "HOLD",
       "trade": null
     },
     "trader-brain-bandit-v1": {
-      "age_minutes": 75.70933251666666,
-      "decision_ev": -0.002515279693055212,
+      "age_minutes": 75.37999131666668,
+      "decision_ev": -0.002516687417556412,
       "display_name": "Trader Brain + RL",
       "driver": "trader_brain_rl",
-      "feature_time_utc": "2026-08-16T23:00:00+00:00",
+      "feature_time_utc": "2026-08-17T00:00:00+00:00",
       "learning": {
-        "average_market_return": -0.0005643841085727969,
+        "average_market_return": -0.0007268265503991844,
         "average_reward": 0.0,
-        "experience_count": 13,
+        "experience_count": 14,
         "expert_reliability": {
-          "ai_v3_12h": 1.0482758620689656,
-          "ai_v3_3h": 1.0482758620689656,
-          "technical": 1.0314220904722495
+          "ai_v3_12h": 1.0533898305084746,
+          "ai_v3_3h": 1.0533898305084746,
+          "technical": 1.035683218651101
         },
         "model_id": "trader-brain-bandit-v1",
-        "resolved_count": 9
+        "resolved_count": 10
       },
       "policy_source": "supervised_warmup",
-      "probability": 0.18187238711365783,
-      "recorded_at": "2026-08-17T00:05:38.013639+00:00",
+      "probability": 0.18231527001411313,
+      "recorded_at": "2026-08-17T01:05:31.958653+00:00",
       "signal": "NO_TRADE",
       "trade": null
     },
     "trader-brain-v1": {
-      "age_minutes": 75.70933251666666,
-      "decision_ev": -0.002515279693055212,
+      "age_minutes": 75.37999131666668,
+      "decision_ev": -0.002516687417556412,
       "display_name": "Trader Brain V1",
       "driver": "trader_brain",
-      "feature_time_utc": "2026-08-16T23:00:00+00:00",
+      "feature_time_utc": "2026-08-17T00:00:00+00:00",
       "learning": {
-        "average_market_return": -0.0005643841085727969,
+        "average_market_return": -0.0007268265503991844,
         "average_reward": 0.0,
-        "experience_count": 13,
+        "experience_count": 14,
         "expert_reliability": {
-          "ai_v3_12h": 1.0482758620689656,
-          "ai_v3_3h": 1.0482758620689656,
-          "technical": 1.0314220904722495
+          "ai_v3_12h": 1.0533898305084746,
+          "ai_v3_3h": 1.0533898305084746,
+          "technical": 1.035683218651101
         },
         "model_id": "trader-brain-v1",
-        "resolved_count": 9
+        "resolved_count": 10
       },
       "policy_source": "supervised_moe",
-      "probability": 0.18187238711365783,
-      "recorded_at": "2026-08-17T00:05:37.982162+00:00",
+      "probability": 0.18231527001411313,
+      "recorded_at": "2026-08-17T01:05:31.935468+00:00",
       "signal": "NO_TRADE",
       "trade": null
     },
     "v3-25bps-fullcontext-12h": {
-      "age_minutes": 15.709332516666667,
-      "decision_ev": -0.007048062177752391,
+      "age_minutes": 15.379991316666667,
+      "decision_ev": null,
       "display_name": "V3 12h Economic",
       "driver": "frozen_v3",
-      "feature_time_utc": "2026-08-17T00:00:00+00:00",
-      "probability": 0.3570803846722084,
-      "recorded_at": "2026-08-17T00:05:32.774142+00:00",
-      "signal": "HOLD",
+      "feature_time_utc": "2026-08-17T01:00:00+00:00",
+      "probability": 0.34696850409518526,
+      "recorded_at": "2026-08-17T01:05:27.018316+00:00",
+      "signal": "COMMITMENT",
       "trade": null
     },
     "v3-50bps-technical-3h": {
-      "age_minutes": 15.709332516666667,
-      "decision_ev": -0.005181968434145389,
+      "age_minutes": 15.379991316666667,
+      "decision_ev": null,
       "display_name": "V3 3h Signal Control",
       "driver": "frozen_v3",
-      "feature_time_utc": "2026-08-17T00:00:00+00:00",
-      "probability": 0.15227083100484823,
-      "recorded_at": "2026-08-17T00:05:33.674187+00:00",
-      "signal": "HOLD",
+      "feature_time_utc": "2026-08-17T01:00:00+00:00",
+      "probability": 0.16011174870765163,
+      "recorded_at": "2026-08-17T01:05:27.942665+00:00",
+      "signal": "COMMITMENT",
       "trade": null
     }
   },
   "system": {
     "cpu_count": 4,
     "disk": {
-      "free_bytes": 69843578880,
-      "free_fraction": 0.8700053021804044,
+      "free_bytes": 69842944000,
+      "free_fraction": 0.869997393808939,
       "total_bytes": 80279486464,
-      "used_bytes": 7137648640
+      "used_bytes": 7138283520
     },
     "load_average": {
-      "15m": 0.087890625,
-      "1m": 0.08544921875,
-      "5m": 0.0908203125
+      "15m": 0.103515625,
+      "1m": 0.1416015625,
+      "5m": 0.1572265625
     },
     "memory": {
-      "available_bytes": 7350079488,
-      "available_fraction": 0.9049233253437109,
+      "available_bytes": 7351836672,
+      "available_fraction": 0.905139665424266,
       "total_bytes": 8122322944
     }
   }
