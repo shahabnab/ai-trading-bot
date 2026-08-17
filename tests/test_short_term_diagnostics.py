@@ -140,3 +140,38 @@ def test_outcome_analyzer_marks_profitable_rejected_setup_as_missed_long(tmp_pat
     policy = next(row for row in model["policies"] if row["name"] == "shadow_45")
     assert policy["signals"] == 1
     assert policy["wins"] == 1
+
+
+def test_outcome_analyzer_separates_open_position_management(tmp_path: Path):
+    features = _momentum_features()
+    append_decision_diagnostic(
+        tmp_path,
+        {
+            "decision_key": decision_key("short-momentum-15m", features.timestamp),
+            "model_id": "short-momentum-15m",
+            "feature_timestamp": features.timestamp,
+            "signal_close": features.close,
+            "decision_action": "HOLD",
+            "signal": "HOLD",
+            "confidence": 0.6,
+            "confirmation_score": 0.0,
+            "setup_ready": False,
+            "long_open_at_decision": True,
+            "edge_proxy_bps": 10.0,
+            "official_threshold_bps": 65.0,
+            "edge_gap_bps": -55.0,
+            "round_trip_cost_bps": 50.0,
+            "shadow_policies": [],
+        },
+    )
+    candles = [
+        {
+            "created_at": features.timestamp + i * BUCKET_MS,
+            "close": str(100.0 + i * 0.01),
+            "high": str(100.1 + i * 0.01),
+            "low": str(99.9 + i * 0.01),
+        }
+        for i in range(1, 9)
+    ]
+    outcome = resolve_mature_outcomes(tmp_path, candles)[0]
+    assert outcome["classification"] == "POSITION_MANAGEMENT"
