@@ -12,6 +12,12 @@ from backend.paper.model_catalog import SHORT_TERM_MODELS
 from backend.paper.model_engine import ModelPaperStore
 from backend.risk.manager import RiskManager, TradeProposal
 
+from .diagnostics import (
+    append_decision_diagnostic,
+    build_shadow_policies,
+    decision_key,
+    resolve_mature_outcomes,
+)
 from .features import ShortTermFeatures, build_short_term_features
 from .strategies import ShortTermDecision, decide_mean_reversion, decide_momentum
 
@@ -236,8 +242,9 @@ async def run_short_term_once(
     one_way_cost_bps = float(settings.paper_fee_rate) * 10_000.0 + float(settings.paper_slippage_bps)
     round_trip_cost_bps = 2.0 * one_way_cost_bps
     # Short-term signals must clear the full simulated round-trip cost plus a
-    # 15 bps research buffer. This prevents increasing activity by simply
-    # trading noise that cannot pay its execution costs.
+    # 15 bps research buffer. The official policy remains unchanged; shadow
+    # policies below measure what different hurdles would have done without
+    # affecting paper fills.
     min_edge_bps = round_trip_cost_bps + 15.0
 
     signal_close = Decimal(str(features.close))
@@ -266,6 +273,7 @@ async def run_short_term_once(
             results.append({"model_id": spec.model_id, "status": "already_processed", "feature_timestamp": features.timestamp})
             continue
 
+        diagnostic_payload: dict[str, Any] | None = None
         try:
             _, _, _, long_open, hold_minutes, unrealized_return = _position_context(store, spec.model_id, quote.last)
             decision = _decide(
@@ -286,9 +294,17 @@ async def run_short_term_once(
                 dry_run=dry_run,
             )
             signal = "BUY" if executed == "BUY" else "SELL" if executed == "SELL" else "HOLD"
+            shadow_policies = build_shadow_policies(
+                decision,
+                entry_context=not long_open,
+                official_threshold_bps=min_edge_bps,
+                round_trip_cost_bps=round_trip_cost_bps,
+            )
+            edge_gap_bps = float(decision.edge_proxy_bps) - min_edge_bps
             reason = (
                 f"15m {spec.display_name}; {decision.reason} "
-                f"round_trip_cost={round_trip_cost_bps:.1f}bps; RiskManager={risk_reason}"
+                f"edge_gap={edge_gap_bps:+.1f}bps; round_trip_cost={round_trip_cost_bps:.1f}bps; "
+                f"RiskManager={risk_reason}"
             )
             if not dry_run:
                 store.record_decision(
@@ -301,6 +317,32 @@ async def run_short_term_once(
                     strategy_version="short-term-v1",
                     market_price=quote.last,
                 )
+
+            diagnostic_payload = {
+                "decision_key": decision_key(spec.model_id, features.timestamp),
+                "recorded_at": datetime.now(UTC).isoformat(),
+                "model_id": spec.model_id,
+                "display_name": spec.display_name,
+                "feature_timestamp": features.timestamp,
+                "feature_time_utc": datetime.fromtimestamp(features.timestamp / 1000.0, UTC).isoformat(),
+                "signal_close": float(signal_close),
+                "market_price": float(quote.last),
+                "signal_execution_drift_bps": signal_execution_drift_bps,
+                "decision_action": decision.action,
+                "signal": signal,
+                "executed_action": executed,
+                "approved": approved,
+                "confidence": decision.confidence,
+                "confirmation_score": decision.confirmation_score,
+                "setup_ready": decision.setup_ready,
+                "microstructure_ready": decision.microstructure_ready,
+                "edge_proxy_bps": decision.edge_proxy_bps,
+                "official_threshold_bps": min_edge_bps,
+                "edge_gap_bps": edge_gap_bps,
+                "round_trip_cost_bps": round_trip_cost_bps,
+                "long_open_at_decision": long_open,
+                "shadow_policies": shadow_policies,
+            }
 
             result = {
                 "status": "ok",
@@ -322,6 +364,8 @@ async def run_short_term_once(
                 "trade": trade,
                 "round_trip_cost_bps": round_trip_cost_bps,
                 "min_edge_bps": min_edge_bps,
+                "edge_gap_bps": edge_gap_bps,
+                "shadow_policies": shadow_policies,
                 "dry_run": dry_run,
                 "reason": reason,
             }
@@ -348,5 +392,33 @@ async def run_short_term_once(
 
         results.append(result)
         if not dry_run:
+            # Persist the execution result first. Diagnostics must never be able
+            # to cause a paper order to be repeated on the same feature bucket.
             _write_json(latest_path, result)
+            if diagnostic_payload is not None:
+                try:
+                    append_decision_diagnostic(state_root, diagnostic_payload)
+                except Exception as exc:
+                    _write_json(state_root / "diagnostics_last_error.json", {
+                        "recorded_at": datetime.now(UTC).isoformat(),
+                        "stage": "append_decision",
+                        "model_id": spec.model_id,
+                        "feature_timestamp": features.timestamp,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    })
+
+    if not dry_run:
+        try:
+            resolve_mature_outcomes(state_root, completed)
+        except Exception as exc:
+            # Outcome analysis is observational only. Never let it interrupt
+            # the short-term PAPER execution loop.
+            _write_json(state_root / "diagnostics_last_error.json", {
+                "recorded_at": datetime.now(UTC).isoformat(),
+                "stage": "resolve_outcomes",
+                "feature_timestamp": features.timestamp,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            })
     return results

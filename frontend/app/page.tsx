@@ -1,8 +1,10 @@
 import LivePredictionTerminal from "../components/LivePredictionTerminal";
 import ModelComparisonTabs, { type PaperDecision, type PaperModel, type PaperTrade } from "../components/ModelComparisonTabs";
+import ShortTermDiagnostics from "../components/ShortTermDiagnostics";
 
 const API_BASE = process.env.API_BASE_URL ?? "http://127.0.0.1:8000";
 const BRAIN_IDS = ["trader-brain-v1", "trader-brain-bandit-v1"] as const;
+const MIN_CLOSED_TRADES_FOR_LEADER = 10;
 
 async function safeGet<T>(path: string): Promise<T | null> {
   try {
@@ -46,7 +48,7 @@ export default async function Home() {
   const shortTermModels = models.filter((model) => model.driver === "short_term");
   const coreModels = models.filter((model) => model.driver !== "short_term");
   const ranked = [...models].sort((a,b) => Number(b.portfolio.total_return) - Number(a.portfolio.total_return));
-  const leader = ranked[0];
+  const leader = ranked.find((model) => model.performance.closed_trades >= MIN_CLOSED_TRADES_FOR_LEADER);
   const fills = models.reduce((sum, model) => sum + model.performance.trade_count, 0);
 
   const panel: React.CSSProperties = { border: "1px solid rgba(148,163,184,.22)", borderRadius: 14, padding: 18, background: "rgba(15,23,42,.52)" };
@@ -61,7 +63,7 @@ export default async function Home() {
 
       <section style={grid}>
         <article style={panel}><small>ALGORITHMS</small><h2>{models.length}</h2><p>{coreModels.length} core + {shortTermModels.length} short-term independent €1,000 ledgers</p></article>
-        <article style={panel}><small>CURRENT LEADER</small><h2>{leader?.display_name ?? "Waiting"}</h2><p>{leader ? `${(Number(leader.portfolio.total_return)*100).toFixed(2)}% net` : "No forward data"}</p></article>
+        <article style={panel}><small>CURRENT LEADER</small><h2>{leader?.display_name ?? "Insufficient forward data"}</h2><p>{leader ? `${(Number(leader.portfolio.total_return)*100).toFixed(2)}% net` : `Needs ≥${MIN_CLOSED_TRADES_FOR_LEADER} closed trades before ranking`}</p></article>
         <article style={panel}><small>SIMULATED FILLS</small><h2>{fills}</h2><p>Across all compared algorithms</p></article>
         <article style={panel}><small>BTCUSDT</small><h2>{quote ? `$${Number(quote.last).toLocaleString(undefined,{maximumFractionDigits:2})}` : "—"}</h2><p>Live public CoinEx reference</p></article>
       </section>
@@ -77,13 +79,17 @@ export default async function Home() {
       )}
 
       {shortTermModels.length > 0 && (
-        <ModelComparisonTabs
-          models={shortTermModels}
-          tradesByModel={tradesByModel}
-          decisionsByModel={decisionsByModel}
-          eyebrow="SHORT-TERM LAB · 15-MINUTE MARKET STRUCTURE"
-          title="Intraday performance comparison"
-        />
+        <>
+          <ModelComparisonTabs
+            models={shortTermModels}
+            tradesByModel={tradesByModel}
+            decisionsByModel={decisionsByModel}
+            eyebrow="SHORT-TERM LAB · 15-MINUTE MARKET STRUCTURE"
+            title="Intraday performance comparison"
+            decisionScoreLabel="Setup score"
+          />
+          <ShortTermDiagnostics />
+        </>
       )}
 
       <LivePredictionTerminal />

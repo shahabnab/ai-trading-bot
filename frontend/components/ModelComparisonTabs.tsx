@@ -60,6 +60,7 @@ type Props = {
   decisionsByModel: Record<string, PaperDecision[]>;
   eyebrow?: string;
   title?: string;
+  decisionScoreLabel?: string;
 };
 
 function n(value: string | number | null | undefined): number {
@@ -93,6 +94,7 @@ export default function ModelComparisonTabs({
   decisionsByModel,
   eyebrow = "ALL ALGORITHMS · SAME PAPER CONDITIONS",
   title = "Forward performance comparison",
+  decisionScoreLabel = "Confidence",
 }: Props) {
   const ranked = useMemo(() => [...models].sort((a, b) => n(b.portfolio.total_return) - n(a.portfolio.total_return)), [models]);
   const [activeId, setActiveId] = useState(ranked[0]?.model_id ?? "");
@@ -140,7 +142,7 @@ export default function ModelComparisonTabs({
         </div>
 
         <h3>Recent decisions</h3>
-        <div style={{ overflowX: "auto", marginBottom: 18 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={thtd}>Time</th><th style={thtd}>Signal</th><th style={thtd}>Confidence</th><th style={thtd}>Approved</th><th style={thtd}>Audit reason</th></tr></thead><tbody>{decisions.length ? decisions.slice(0,20).map((row, idx) => <tr key={row.id ?? idx}><td style={thtd}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td><td style={{ ...thtd, color: signalColor(row.signal) }}>{row.signal ?? "—"}</td><td style={thtd}>{row.confidence == null ? "—" : pct(row.confidence)}</td><td style={thtd}>{row.approved ? "yes" : "no"}</td><td style={{ ...thtd, whiteSpace: "normal", maxWidth: 700 }}>{row.reason ?? "—"}</td></tr>) : <tr><td style={thtd} colSpan={5}>No decisions yet.</td></tr>}</tbody></table></div>
+        <div style={{ overflowX: "auto", marginBottom: 18 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={thtd}>Time</th><th style={thtd}>Signal</th><th style={thtd}>{decisionScoreLabel}</th><th style={thtd}>Approved</th><th style={thtd}>Audit reason</th></tr></thead><tbody>{decisions.length ? decisions.slice(0,20).map((row, idx) => <tr key={row.id ?? idx}><td style={thtd}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td><td style={{ ...thtd, color: signalColor(row.signal) }}>{row.signal ?? "—"}</td><td style={thtd}>{row.confidence == null ? "—" : pct(row.confidence)}</td><td style={thtd}>{row.approved ? "yes" : "no"}</td><td style={{ ...thtd, whiteSpace: "normal", maxWidth: 700 }}>{row.reason ?? "—"}</td></tr>) : <tr><td style={thtd} colSpan={5}>No decisions yet.</td></tr>}</tbody></table></div>
 
         <h3>Recent simulated fills</h3>
         <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={thtd}>Time</th><th style={thtd}>Side</th><th style={thtd}>Qty</th><th style={thtd}>Execution</th><th style={thtd}>Fee</th><th style={thtd}>Realized P/L</th></tr></thead><tbody>{trades.length ? trades.slice(0,20).map((row, idx) => <tr key={row.id ?? idx}><td style={thtd}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td><td style={{ ...thtd, color: signalColor(row.side) }}>{row.side}</td><td style={thtd}>{n(row.quantity).toFixed(6)}</td><td style={thtd}>{money(row.execution_price)}</td><td style={thtd}>€{money(row.fee_usdt)}</td><td style={{ ...thtd, color: pnlColor(row.realized_pnl_usdt) }}>€{money(row.realized_pnl_usdt)}</td></tr>) : <tr><td style={thtd} colSpan={6}>No fills yet.</td></tr>}</tbody></table></div>
