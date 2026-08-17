@@ -327,7 +327,7 @@ def build_diagnostics_summary(state_root: Path, *, limit: int = 2000) -> dict[st
         buckets: dict[str, list[float]] = defaultdict(list)
         bucket_positive: dict[str, int] = defaultdict(int)
         for row in model_outcomes:
-            label, _, _ = _confidence_bucket(_float(row.get("confidence"), 0.0))
+            label, _, _ = _confidence_bucket(_float(row.get("confirmation_score"), 0.0))
             returns = row.get("returns_bps", {})
             if not isinstance(returns, dict):
                 continue
