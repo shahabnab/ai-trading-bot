@@ -57,6 +57,7 @@ For rejected long setups the main labels are:
 - `AVOIDED_LOSS`: setup was ready, official entry was rejected, and the 2h close later moved downward by at least the official hurdle,
 - `GOOD_HOLD`: setup was ready but neither of the above occurred,
 - `NO_SETUP`: the strategy checklist/microstructure gate itself was not ready,
+- `POSITION_MANAGEMENT`: a paper position was already open, so the row is not an entry-opportunity evaluation,
 - `ENTRY_SIGNAL`: the official strategy produced an entry signal.
 
 The short-term baselines are currently long-only, so this diagnostic intentionally does not claim `MISSED_SHORT` events.
