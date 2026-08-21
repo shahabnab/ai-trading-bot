@@ -57,6 +57,45 @@ def test_momentum_enters_only_when_cost_hurdle_is_cleared():
     assert no.action == "HOLD"
 
 
+def test_exploration_momentum_can_trade_a_setup_the_official_policy_rejects():
+    # Six of ten momentum confirmations are true and the move proxy is 60 bps.
+    # The official 72%/65-bps policy must stay flat, while the separate PAPER
+    # exploration policy (60%/50-bps) is allowed to sample the trade.
+    f = _features(
+        return_15m=-0.0005,
+        return_30m=-0.0004,
+        return_1h=0.0060,
+        return_2h=0.0080,
+        ema_gap_bps=-1.0,
+        ema_fast_slope_bps=4.0,
+        rsi_14=60.0,
+        volume_z=-1.0,
+        trade_imbalance=0.20,
+        book_imbalance=0.20,
+        spread_bps=2.0,
+    )
+    official = decide_momentum(
+        f,
+        long_open=False,
+        hold_minutes=0,
+        unrealized_return=0,
+        min_edge_bps=65,
+        min_setup_score=0.72,
+    )
+    explore = decide_momentum(
+        f,
+        long_open=False,
+        hold_minutes=0,
+        unrealized_return=0,
+        min_edge_bps=50,
+        min_setup_score=0.60,
+    )
+    assert official.action == "HOLD"
+    assert explore.action == "ENTER_LONG"
+    assert explore.confirmation_score == 0.6
+    assert explore.edge_proxy_bps == 60.0
+
+
 def test_mean_reversion_can_enter_oversold_setup():
     f = _features(
         return_15m=-0.004, return_30m=-0.007, return_1h=-0.010, return_2h=-0.008,
@@ -186,6 +225,17 @@ def test_previous_bucket_remains_assignable_during_rollover_grace_poll():
 def test_short_term_models_are_isolated_catalog_entries():
     ids = {model.model_id for model in SHORT_TERM_MODELS}
     all_ids = {model.model_id for model in ALL_PAPER_MODELS}
-    assert ids == {"short-momentum-15m", "short-mean-reversion-15m"}
+    assert ids == {
+        "short-momentum-15m",
+        "short-mean-reversion-15m",
+        "short-momentum-explore-15m",
+        "short-mean-reversion-explore-15m",
+    }
     assert ids <= all_ids
     assert all(model.driver == "short_term" for model in SHORT_TERM_MODELS)
+    official = {model.model_id: model for model in SHORT_TERM_MODELS if not model.experimental}
+    explore = {model.model_id: model for model in SHORT_TERM_MODELS if model.experimental}
+    assert set(official) == {"short-momentum-15m", "short-mean-reversion-15m"}
+    assert set(explore) == {"short-momentum-explore-15m", "short-mean-reversion-explore-15m"}
+    assert all(model.target_bps == 65 for model in official.values())
+    assert all(model.target_bps == 50 for model in explore.values())
