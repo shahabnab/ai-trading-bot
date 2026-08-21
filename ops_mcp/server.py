@@ -22,8 +22,8 @@ ALLOWED_SERVICES = {
     "ai-trading-shortterm-collector.service",
     "ai-trading-paper-snapshot.service",
     "ai-trading-paper-snapshot.timer",
-    "ai-trading-six-hour-monitor.service",
-    "ai-trading-six-hour-monitor.timer",
+    "ai-trading-paper-monitor.service",
+    "ai-trading-paper-monitor.timer",
     "ai-trading-ops-supervisor.service",
     "ai-trading-ops-supervisor.timer",
 }
