@@ -2,10 +2,12 @@
 set -euo pipefail
 
 ROOT="${1:-/opt/ai-trading-bot}"
-PYTHON="$ROOT/.venv/bin/python"
-PIP="$ROOT/.venv/bin/pip"
+PROJECT_PYTHON="$ROOT/.venv/bin/python"
 SERVER="$ROOT/ops_mcp/server.py"
 WRAPPER="$ROOT/scripts/mcp_ops_action.sh"
+MCP_VENV="${AI_TRADING_MCP_VENV:-/opt/ai-trading-mcp-venv}"
+MCP_PYTHON="$MCP_VENV/bin/python"
+MCP_PIP="$MCP_VENV/bin/pip"
 SERVICE=/etc/systemd/system/ai-trading-mcp.service
 SUDOERS=/etc/sudoers.d/ai-trading-mcp
 USER_NAME=aiops
@@ -15,7 +17,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-for path in "$PYTHON" "$PIP" "$SERVER" "$WRAPPER" "$ROOT/requirements-mcp.txt"; do
+for path in "$PROJECT_PYTHON" "$SERVER" "$WRAPPER" "$ROOT/requirements-mcp.txt"; do
   [[ -e "$path" ]] || { echo "Missing: $path" >&2; exit 2; }
 done
 
@@ -26,6 +28,15 @@ usermod -a -G systemd-journal "$USER_NAME" || true
 
 chmod 755 "$WRAPPER"
 
+# Keep MCP dependencies isolated from the trading application's virtualenv.
+# The MCP process uses this dedicated environment, while the run_tests tool
+# intentionally invokes $ROOT/.venv/bin/python for the project test suite.
+if [[ ! -x "$MCP_PYTHON" ]]; then
+  python3 -m venv "$MCP_VENV"
+fi
+"$MCP_PIP" install --upgrade pip
+"$MCP_PIP" install -r "$ROOT/requirements-mcp.txt"
+
 # Only this audited wrapper can be elevated. The wrapper itself allowlists every
 # privileged action and service name; the MCP process never receives a shell.
 cat > "$SUDOERS" <<EOF
@@ -33,8 +44,6 @@ $USER_NAME ALL=(root) NOPASSWD: $WRAPPER *
 EOF
 chmod 440 "$SUDOERS"
 visudo -cf "$SUDOERS"
-
-"$PIP" install -r "$ROOT/requirements-mcp.txt"
 
 cat > "$SERVICE" <<EOF
 [Unit]
@@ -53,7 +62,7 @@ Environment=PYTHONPATH=$ROOT
 Environment=AI_TRADING_REPO_ROOT=$ROOT
 Environment=AI_TRADING_MCP_HOST=127.0.0.1
 Environment=AI_TRADING_MCP_PORT=8765
-ExecStart=$PYTHON $SERVER
+ExecStart=$MCP_PYTHON $SERVER
 Restart=on-failure
 RestartSec=3
 PrivateTmp=true
@@ -75,5 +84,6 @@ echo
 systemctl status ai-trading-mcp.service --no-pager -l || true
 echo
 echo "MCP is bound ONLY to 127.0.0.1:8765."
+echo "MCP dependencies live in $MCP_VENV and do not modify $ROOT/.venv."
 echo "Do not open port 8765 in the firewall."
 echo "Connect it to ChatGPT using Secure MCP Tunnel or an authenticated HTTPS reverse proxy."
