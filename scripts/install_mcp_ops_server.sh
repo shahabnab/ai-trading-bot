@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${1:-/opt/ai-trading-bot}"
 MCP_VENV="${AI_TRADING_MCP_VENV:-/opt/ai-trading-mcp-venv}"
+SYSTEM_PYTHON="${AI_TRADING_MCP_SYSTEM_PYTHON:-/usr/bin/python3}"
 PYTHON="$MCP_VENV/bin/python"
 SERVER="$ROOT/ops_mcp/server.py"
 WRAPPER="$ROOT/scripts/mcp_ops_action.sh"
@@ -19,8 +20,9 @@ for path in "$SERVER" "$WRAPPER" "$ROOT/requirements-mcp.txt"; do
   [[ -e "$path" ]] || { echo "Missing: $path" >&2; exit 2; }
 done
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required." >&2
+if [[ ! -x "$SYSTEM_PYTHON" ]]; then
+  echo "System Python is required at $SYSTEM_PYTHON." >&2
+  echo "Do not use a Python interpreter located under /root for this service." >&2
   exit 2
 fi
 
@@ -35,14 +37,31 @@ case "$MCP_VENV" in
     ;;
 esac
 
-# Stop an older/restarting unit before repairing its interpreter. The previous
-# service may be in a 203/EXEC loop if a partial/broken venv exists.
+# Stop an older/restarting unit before repairing its interpreter.
 systemctl stop ai-trading-mcp.service 2>/dev/null || true
+systemctl reset-failed ai-trading-mcp.service 2>/dev/null || true
 
+# A venv created from uv/root Python can leave bin/python pointing into /root.
+# The aiops service user cannot traverse /root (and ProtectHome=true also blocks
+# it), so recreate whenever the resolved interpreter is under /root or missing.
+RECREATE_VENV=0
 if [[ ! -x "$PYTHON" ]]; then
-  echo "Creating isolated MCP virtualenv: $MCP_VENV"
+  RECREATE_VENV=1
+else
+  RESOLVED_PYTHON="$(readlink -f "$PYTHON" 2>/dev/null || true)"
+  case "$RESOLVED_PYTHON" in
+    /root/*|"") RECREATE_VENV=1 ;;
+  esac
+fi
+
+if [[ "$RECREATE_VENV" -eq 1 ]]; then
+  echo "Creating isolated MCP virtualenv with system Python: $SYSTEM_PYTHON"
   rm -rf -- "$MCP_VENV"
-  python3 -m venv --copies "$MCP_VENV"
+  if ! "$SYSTEM_PYTHON" -m venv --copies "$MCP_VENV"; then
+    echo "Failed to create MCP virtualenv with $SYSTEM_PYTHON." >&2
+    echo "On Debian/Ubuntu install the matching python3-venv package and retry." >&2
+    exit 2
+  fi
 fi
 
 if [[ ! -x "$PYTHON" ]]; then
@@ -50,20 +69,32 @@ if [[ ! -x "$PYTHON" ]]; then
   exit 2
 fi
 
-# Use the interpreter itself to invoke pip. This prevents a stale/broken pip
-# launcher from installing packages somewhere other than the venv used by
-# systemd.
-"$PYTHON" -m pip install -r "$ROOT/requirements-mcp.txt"
+RESOLVED_PYTHON="$(readlink -f "$PYTHON" 2>/dev/null || true)"
+case "$RESOLVED_PYTHON" in
+  /root/*|"")
+    echo "Refusing MCP interpreter that resolves into /root: $RESOLVED_PYTHON" >&2
+    exit 2
+    ;;
+esac
 
-# Verify the exact interpreter systemd will execute before writing/enabling the
-# unit. This turns a confusing 203/EXEC restart loop into an installer error.
+echo "MCP Python resolves to: $RESOLVED_PYTHON"
+
+# Use the exact interpreter systemd will execute to install dependencies.
+"$PYTHON" -m pip install -r "$ROOT/requirements-mcp.txt"
 "$PYTHON" -c 'import sys, mcp; print("MCP interpreter:", sys.executable); print("MCP import: OK")'
-[[ -x "$PYTHON" ]] || { echo "MCP interpreter disappeared after install: $PYTHON" >&2; exit 2; }
 
 if ! id "$USER_NAME" >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
 fi
 usermod -a -G systemd-journal "$USER_NAME" || true
+
+# Verify the service account can execute this exact interpreter before systemd
+# is touched. This catches inaccessible symlink targets immediately.
+if command -v runuser >/dev/null 2>&1; then
+  runuser -u "$USER_NAME" -- "$PYTHON" -c 'import sys, mcp; print("aiops MCP interpreter:", sys.executable); print("aiops MCP import: OK")'
+else
+  sudo -u "$USER_NAME" "$PYTHON" -c 'import sys, mcp; print("aiops MCP interpreter:", sys.executable); print("aiops MCP import: OK")'
+fi
 
 chmod 755 "$WRAPPER"
 
@@ -110,8 +141,6 @@ EOF
 systemctl daemon-reload
 systemctl enable --now ai-trading-mcp.service
 
-# Give systemd a moment to catch immediate EXEC/import failures and fail the
-# installer instead of printing a misleading transient "active" state.
 sleep 1
 if ! systemctl is-active --quiet ai-trading-mcp.service; then
   echo "MCP service failed to stay active." >&2
