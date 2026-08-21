@@ -22,6 +22,8 @@ class PaperModelSpec:
     description: str = ""
     adaptive: bool = False
     supports_short: bool = False
+    policy_mode: str = "official"
+    experimental: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -88,6 +90,28 @@ SHORT_TERM_MODELS: tuple[PaperModelSpec, ...] = (
             "Cost-aware oversold/mean-reversion benchmark using Bollinger displacement, RSI, VWAP distance, "
             "volume plus CoinEx taker flow and depth. Long/flat PAPER only; maximum intended hold about 2h."
         ),
+    ),
+    PaperModelSpec(
+        model_id="short-momentum-explore-15m", display_name="Momentum Explore 15m", role="short_term_exploration",
+        target_bps=50, horizon_hours=2, feature_set="15m_ohlcv_orderflow_depth", research_auc=0.0,
+        research_median_auc=0.0, research_sharpe_25bps=0.0, research_return_25bps=0.0,
+        research_trades=0, driver="short_term", algorithm_family="15m Momentum + Microstructure · Explore",
+        description=(
+            "PAPER-only exploration variant of the same momentum logic. It uses a separate ledger, a 60% setup "
+            "score floor, and an entry hurdle equal to modeled round-trip cost so that more candidate trades are "
+            "executed without changing the conservative benchmark."
+        ), policy_mode="exploration", experimental=True,
+    ),
+    PaperModelSpec(
+        model_id="short-mean-reversion-explore-15m", display_name="Mean Reversion Explore 15m", role="short_term_exploration",
+        target_bps=50, horizon_hours=2, feature_set="15m_ohlcv_orderflow_depth", research_auc=0.0,
+        research_median_auc=0.0, research_sharpe_25bps=0.0, research_return_25bps=0.0,
+        research_trades=0, driver="short_term", algorithm_family="15m Mean Reversion + Microstructure · Explore",
+        description=(
+            "PAPER-only exploration variant of the same mean-reversion logic. It uses a separate ledger, a 62.5% "
+            "setup score floor, and an entry hurdle equal to modeled round-trip cost to increase trade frequency "
+            "while preserving the conservative benchmark unchanged."
+        ), policy_mode="exploration", experimental=True,
     ),
 )
 
