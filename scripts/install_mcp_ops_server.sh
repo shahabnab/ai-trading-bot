@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT="${1:-/opt/ai-trading-bot}"
 MCP_VENV="${AI_TRADING_MCP_VENV:-/opt/ai-trading-mcp-venv}"
 PYTHON="$MCP_VENV/bin/python"
-PIP="$MCP_VENV/bin/pip"
 SERVER="$ROOT/ops_mcp/server.py"
 WRAPPER="$ROOT/scripts/mcp_ops_action.sh"
 SERVICE=/etc/systemd/system/ai-trading-mcp.service
@@ -24,9 +23,42 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required." >&2
   exit 2
 fi
+
+# Never let a configurable venv path point at a dangerous location. This
+# directory is disposable and contains MCP dependencies only.
+case "$MCP_VENV" in
+  /opt/ai-trading-mcp-venv|/var/lib/ai-trading-mcp/venv) ;;
+  *)
+    echo "Refusing unexpected MCP venv path: $MCP_VENV" >&2
+    echo "Allowed: /opt/ai-trading-mcp-venv or /var/lib/ai-trading-mcp/venv" >&2
+    exit 2
+    ;;
+esac
+
+# Stop an older/restarting unit before repairing its interpreter. The previous
+# service may be in a 203/EXEC loop if a partial/broken venv exists.
+systemctl stop ai-trading-mcp.service 2>/dev/null || true
+
 if [[ ! -x "$PYTHON" ]]; then
-  python3 -m venv "$MCP_VENV"
+  echo "Creating isolated MCP virtualenv: $MCP_VENV"
+  rm -rf -- "$MCP_VENV"
+  python3 -m venv --copies "$MCP_VENV"
 fi
+
+if [[ ! -x "$PYTHON" ]]; then
+  echo "MCP virtualenv creation failed: missing executable $PYTHON" >&2
+  exit 2
+fi
+
+# Use the interpreter itself to invoke pip. This prevents a stale/broken pip
+# launcher from installing packages somewhere other than the venv used by
+# systemd.
+"$PYTHON" -m pip install -r "$ROOT/requirements-mcp.txt"
+
+# Verify the exact interpreter systemd will execute before writing/enabling the
+# unit. This turns a confusing 203/EXEC restart loop into an installer error.
+"$PYTHON" -c 'import sys, mcp; print("MCP interpreter:", sys.executable); print("MCP import: OK")'
+[[ -x "$PYTHON" ]] || { echo "MCP interpreter disappeared after install: $PYTHON" >&2; exit 2; }
 
 if ! id "$USER_NAME" >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
@@ -42,8 +74,6 @@ $USER_NAME ALL=(root) NOPASSWD: $WRAPPER *
 EOF
 chmod 440 "$SUDOERS"
 visudo -cf "$SUDOERS"
-
-"$PIP" install -r "$ROOT/requirements-mcp.txt"
 
 cat > "$SERVICE" <<EOF
 [Unit]
@@ -79,6 +109,16 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now ai-trading-mcp.service
+
+# Give systemd a moment to catch immediate EXEC/import failures and fail the
+# installer instead of printing a misleading transient "active" state.
+sleep 1
+if ! systemctl is-active --quiet ai-trading-mcp.service; then
+  echo "MCP service failed to stay active." >&2
+  systemctl status ai-trading-mcp.service --no-pager -l || true
+  journalctl -u ai-trading-mcp.service -n 50 --no-pager || true
+  exit 3
+fi
 
 echo
 systemctl status ai-trading-mcp.service --no-pager -l || true
