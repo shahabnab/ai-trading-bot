@@ -49,12 +49,15 @@ def decide_momentum(
     min_edge_bps: float,
     round_trip_cost_bps: float = 0.0,
     max_hold_minutes: float = 120.0,
+    min_setup_score: float = 0.72,
 ) -> ShortTermDecision:
     """Transparent 15-minute momentum baseline.
 
     New entries require sufficiently complete microstructure and a directional
     price move large enough to clear the configured economic hurdle. ATR is a
     dispersion measure and is deliberately not treated as directional edge.
+    ``min_setup_score`` lets isolated PAPER exploration ledgers test a looser
+    checklist floor without changing the conservative benchmark policy.
     """
     del round_trip_cost_bps  # reserved for symmetric strategy API / future exits
 
@@ -107,7 +110,7 @@ def decide_momentum(
         0.0,
     )
     confidence = _clamp01(0.35 + 0.65 * strength)
-    setup_ready = micro_ready and strength >= 0.72
+    setup_ready = micro_ready and strength >= max(0.0, min(1.0, min_setup_score))
     if setup_ready and move_proxy_bps >= min_edge_bps:
         return ShortTermDecision(
             "ENTER_LONG",
@@ -132,7 +135,7 @@ def decide_momentum(
         "HOLD",
         confidence,
         move_proxy_bps,
-        f"No momentum entry: confirmation={strength:.0%}, move_proxy={move_proxy_bps:.1f} bps, required={min_edge_bps:.1f} bps.",
+        f"No momentum entry: confirmation={strength:.0%} (floor={min_setup_score:.0%}), move_proxy={move_proxy_bps:.1f} bps, required={min_edge_bps:.1f} bps.",
         confirmation_score=strength,
         setup_ready=setup_ready,
         microstructure_ready=micro_ready,
@@ -148,6 +151,7 @@ def decide_mean_reversion(
     min_edge_bps: float,
     round_trip_cost_bps: float = 0.0,
     max_hold_minutes: float = 120.0,
+    min_setup_score: float = 0.75,
 ) -> ShortTermDecision:
     """Cost-aware oversold mean-reversion benchmark on completed 15m data."""
     if long_open:
@@ -207,7 +211,7 @@ def decide_mean_reversion(
         0.0,
     )
     confidence = _clamp01(0.35 + 0.65 * strength)
-    setup_ready = micro_ready and strength >= 0.75
+    setup_ready = micro_ready and strength >= max(0.0, min(1.0, min_setup_score))
     if setup_ready and displacement_bps >= min_edge_bps:
         return ShortTermDecision(
             "ENTER_LONG",
@@ -232,7 +236,7 @@ def decide_mean_reversion(
         "HOLD",
         confidence,
         displacement_bps,
-        f"No mean-reversion entry: confirmation={strength:.0%}, displacement={displacement_bps:.1f} bps, required={min_edge_bps:.1f} bps.",
+        f"No mean-reversion entry: confirmation={strength:.0%} (floor={min_setup_score:.1%}), displacement={displacement_bps:.1f} bps, required={min_edge_bps:.1f} bps.",
         confirmation_score=strength,
         setup_ready=setup_ready,
         microstructure_ready=micro_ready,

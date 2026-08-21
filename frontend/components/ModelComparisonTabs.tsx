@@ -31,6 +31,8 @@ export type PaperModel = {
   horizon_hours: number;
   feature_set: string;
   adaptive?: boolean;
+  policy_mode?: string;
+  experimental?: boolean;
   research_auc?: number;
   research_sharpe_25bps?: number;
   research_return_25bps?: number;
@@ -112,15 +114,16 @@ export default function ModelComparisonTabs({
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><th style={thtd}>#</th><th style={thtd}>Algorithm</th><th style={thtd}>Family</th><th style={thtd}>Equity</th><th style={thtd}>Net P/L</th><th style={thtd}>Return</th><th style={thtd}>Fills</th><th style={thtd}>Win rate</th><th style={thtd}>Fees</th><th style={thtd}>Latest</th></tr></thead>
+            <thead><tr><th style={thtd}>#</th><th style={thtd}>Algorithm</th><th style={thtd}>Policy</th><th style={thtd}>Equity</th><th style={thtd}>Net P/L</th><th style={thtd}>Return</th><th style={thtd}>Closed trades</th><th style={thtd}>Executions</th><th style={thtd}>Win rate</th><th style={thtd}>Fees</th><th style={thtd}>Latest</th></tr></thead>
             <tbody>{ranked.map((model, idx) => (
               <tr key={model.model_id}>
                 <td style={thtd}>{idx + 1}</td>
                 <td style={thtd}><strong>{model.display_name}</strong><br /><small>{model.model_id}</small></td>
-                <td style={thtd}>{model.algorithm_family ?? model.driver ?? "—"}</td>
+                <td style={thtd}>{model.experimental ? "EXPLORE" : (model.policy_mode ?? "official").toUpperCase()}<br /><small>{model.algorithm_family ?? model.driver ?? "—"}</small></td>
                 <td style={thtd}>€{money(model.portfolio.portfolio_value_usdt)}</td>
                 <td style={{ ...thtd, color: pnlColor(model.portfolio.total_pnl_usdt) }}>€{money(model.portfolio.total_pnl_usdt)}</td>
                 <td style={{ ...thtd, color: pnlColor(model.portfolio.total_return) }}>{pct(model.portfolio.total_return, true)}</td>
+                <td style={thtd}>{model.performance.closed_trades}</td>
                 <td style={thtd}>{model.performance.trade_count}</td>
                 <td style={thtd}>{model.performance.win_rate == null ? "—" : pct(model.performance.win_rate)}</td>
                 <td style={thtd}>€{money(model.performance.total_fees_usdt)}</td>
@@ -136,16 +139,16 @@ export default function ModelComparisonTabs({
           {ranked.map((model) => <button key={model.model_id} onClick={() => setActiveId(model.model_id)} style={{ borderRadius: 10, padding: "9px 12px", border: `1px solid ${active.model_id === model.model_id ? "#60a5fa" : "rgba(148,163,184,.25)"}`, background: active.model_id === model.model_id ? "rgba(96,165,250,.14)" : "transparent", color: "inherit", cursor: "pointer" }}>{model.display_name}</button>)}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12, marginBottom: 18 }}>
-          <div style={card}><small>ARCHITECTURE</small><h3>{active.algorithm_family ?? active.driver}</h3><p>{active.description ?? "No description."}</p><p><b>Horizon:</b> {active.horizon_hours}h · <b>Features:</b> {active.feature_set} · <b>Adaptive:</b> {active.adaptive ? "YES" : "NO"}</p></div>
-          <div style={card}><small>FORWARD PAPER</small><h3>€{money(active.portfolio.portfolio_value_usdt)}</h3><p style={{ color: pnlColor(active.portfolio.total_pnl_usdt) }}>Net P/L €{money(active.portfolio.total_pnl_usdt)} · {pct(active.portfolio.total_return, true)}</p><p>{active.performance.closed_trades} closed · {active.performance.winning_trades} wins · fees €{money(active.performance.total_fees_usdt)}</p></div>
+          <div style={card}><small>ARCHITECTURE</small><h3>{active.algorithm_family ?? active.driver}</h3><p>{active.description ?? "No description."}</p><p><b>Policy:</b> {active.experimental ? "PAPER EXPLORATION" : (active.policy_mode ?? "official").toUpperCase()} · <b>Horizon:</b> {active.horizon_hours}h · <b>Features:</b> {active.feature_set} · <b>Adaptive:</b> {active.adaptive ? "YES" : "NO"}</p></div>
+          <div style={card}><small>FORWARD PAPER</small><h3>€{money(active.portfolio.portfolio_value_usdt)}</h3><p style={{ color: pnlColor(active.portfolio.total_pnl_usdt) }}>Net P/L €{money(active.portfolio.total_pnl_usdt)} · {pct(active.portfolio.total_return, true)}</p><p>{active.performance.closed_trades} closed trades · {active.performance.trade_count} executions · {active.performance.winning_trades} wins · fees €{money(active.performance.total_fees_usdt)}</p></div>
           <div style={card}><small>HISTORICAL RESEARCH · NOT FORWARD</small><h3>{active.research_auc ? `AUC ${active.research_auc.toFixed(3)}` : "Collecting"}</h3><p>Sharpe {active.research_trades ? active.research_sharpe_25bps?.toFixed(3) : "—"} · Return {active.research_trades ? pct(active.research_return_25bps, true) : "—"} · Trades {active.research_trades ?? 0}</p></div>
         </div>
 
         <h3>Recent decisions</h3>
         <div style={{ overflowX: "auto", marginBottom: 18 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={thtd}>Time</th><th style={thtd}>Signal</th><th style={thtd}>{decisionScoreLabel}</th><th style={thtd}>Approved</th><th style={thtd}>Audit reason</th></tr></thead><tbody>{decisions.length ? decisions.slice(0,20).map((row, idx) => <tr key={row.id ?? idx}><td style={thtd}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td><td style={{ ...thtd, color: signalColor(row.signal) }}>{row.signal ?? "—"}</td><td style={thtd}>{row.confidence == null ? "—" : pct(row.confidence)}</td><td style={thtd}>{row.approved ? "yes" : "no"}</td><td style={{ ...thtd, whiteSpace: "normal", maxWidth: 700 }}>{row.reason ?? "—"}</td></tr>) : <tr><td style={thtd} colSpan={5}>No decisions yet.</td></tr>}</tbody></table></div>
 
-        <h3>Recent simulated fills</h3>
-        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={thtd}>Time</th><th style={thtd}>Side</th><th style={thtd}>Qty</th><th style={thtd}>Execution</th><th style={thtd}>Fee</th><th style={thtd}>Realized P/L</th></tr></thead><tbody>{trades.length ? trades.slice(0,20).map((row, idx) => <tr key={row.id ?? idx}><td style={thtd}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td><td style={{ ...thtd, color: signalColor(row.side) }}>{row.side}</td><td style={thtd}>{n(row.quantity).toFixed(6)}</td><td style={thtd}>{money(row.execution_price)}</td><td style={thtd}>€{money(row.fee_usdt)}</td><td style={{ ...thtd, color: pnlColor(row.realized_pnl_usdt) }}>€{money(row.realized_pnl_usdt)}</td></tr>) : <tr><td style={thtd} colSpan={6}>No fills yet.</td></tr>}</tbody></table></div>
+        <h3>Recent simulated executions</h3>
+        <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={thtd}>Time</th><th style={thtd}>Side</th><th style={thtd}>Qty</th><th style={thtd}>Execution</th><th style={thtd}>Fee</th><th style={thtd}>Realized P/L</th></tr></thead><tbody>{trades.length ? trades.slice(0,20).map((row, idx) => <tr key={row.id ?? idx}><td style={thtd}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td><td style={{ ...thtd, color: signalColor(row.side) }}>{row.side}</td><td style={thtd}>{n(row.quantity).toFixed(6)}</td><td style={thtd}>{money(row.execution_price)}</td><td style={thtd}>€{money(row.fee_usdt)}</td><td style={{ ...thtd, color: pnlColor(row.realized_pnl_usdt) }}>€{money(row.realized_pnl_usdt)}</td></tr>) : <tr><td style={thtd} colSpan={6}>No executions yet.</td></tr>}</tbody></table></div>
       </article>
     </section>
   );

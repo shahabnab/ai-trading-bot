@@ -25,6 +25,8 @@ BUCKET_MS = 15 * 60 * 1000
 DEFAULT_STATE_ROOT = Path("state/short_term")
 MOMENTUM_ID = "short-momentum-15m"
 MEAN_REVERSION_ID = "short-mean-reversion-15m"
+MOMENTUM_EXPLORE_ID = "short-momentum-explore-15m"
+MEAN_REVERSION_EXPLORE_ID = "short-mean-reversion-explore-15m"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -132,6 +134,7 @@ def _execute(
     decision: ShortTermDecision,
     price: Decimal,
     dry_run: bool,
+    strategy_version: str,
 ) -> tuple[str, dict[str, Any] | None, bool, str]:
     portfolio, total_exposure, symbol_exposure, long_open, _, _ = _position_context(store, model_id, price)
     if decision.action == "HOLD" or (decision.action == "EXIT" and not long_open):
@@ -176,7 +179,7 @@ def _execute(
             fee_rate=settings.paper_fee_rate,
             slippage_bps=settings.paper_slippage_bps,
             confidence=decision.confidence,
-            strategy_version="short-term-v1",
+            strategy_version=strategy_version,
         )
     else:
         trade = store.sell(
@@ -187,9 +190,22 @@ def _execute(
             fee_rate=settings.paper_fee_rate,
             slippage_bps=settings.paper_slippage_bps,
             confidence=decision.confidence,
-            strategy_version="short-term-v1",
+            strategy_version=strategy_version,
         )
     return side, trade, True, risk_decision.reason
+
+
+def _policy(model_id: str, round_trip_cost_bps: float) -> tuple[str, float, float, str, bool]:
+    """Return strategy family, setup floor, edge hurdle, version and exploration flag."""
+    if model_id == MOMENTUM_ID:
+        return "momentum", 0.72, round_trip_cost_bps + 15.0, "short-term-v1", False
+    if model_id == MEAN_REVERSION_ID:
+        return "mean_reversion", 0.75, round_trip_cost_bps + 15.0, "short-term-v1", False
+    if model_id == MOMENTUM_EXPLORE_ID:
+        return "momentum", 0.60, round_trip_cost_bps, "short-term-v1-explore", True
+    if model_id == MEAN_REVERSION_EXPLORE_ID:
+        return "mean_reversion", 0.625, round_trip_cost_bps, "short-term-v1-explore", True
+    raise KeyError(f"Unknown short-term strategy: {model_id}")
 
 
 def _decide(
@@ -201,19 +217,22 @@ def _decide(
     unrealized_return: float,
     min_edge_bps: float,
     round_trip_cost_bps: float,
+    min_setup_score: float,
 ) -> ShortTermDecision:
+    family, _, _, _, _ = _policy(model_id, round_trip_cost_bps)
     kwargs = dict(
         long_open=long_open,
         hold_minutes=hold_minutes,
         unrealized_return=unrealized_return,
         min_edge_bps=min_edge_bps,
         round_trip_cost_bps=round_trip_cost_bps,
+        min_setup_score=min_setup_score,
     )
-    if model_id == MOMENTUM_ID:
+    if family == "momentum":
         return decide_momentum(features, **kwargs)
-    if model_id == MEAN_REVERSION_ID:
+    if family == "mean_reversion":
         return decide_mean_reversion(features, **kwargs)
-    raise KeyError(f"Unknown short-term strategy: {model_id}")
+    raise KeyError(f"Unknown short-term strategy family: {family}")
 
 
 async def run_short_term_once(
@@ -241,11 +260,6 @@ async def run_short_term_once(
 
     one_way_cost_bps = float(settings.paper_fee_rate) * 10_000.0 + float(settings.paper_slippage_bps)
     round_trip_cost_bps = 2.0 * one_way_cost_bps
-    # Short-term signals must clear the full simulated round-trip cost plus a
-    # 15 bps research buffer. The official policy remains unchanged; shadow
-    # policies below measure what different hurdles would have done without
-    # affecting paper fills.
-    min_edge_bps = round_trip_cost_bps + 15.0
 
     signal_close = Decimal(str(features.close))
     signal_execution_drift_bps = (
@@ -273,6 +287,8 @@ async def run_short_term_once(
             results.append({"model_id": spec.model_id, "status": "already_processed", "feature_timestamp": features.timestamp})
             continue
 
+        family, min_setup_score, min_edge_bps, strategy_version, exploration = _policy(spec.model_id, round_trip_cost_bps)
+        policy_mode = "exploration" if exploration else "official"
         diagnostic_payload: dict[str, Any] | None = None
         try:
             _, _, _, long_open, hold_minutes, unrealized_return = _position_context(store, spec.model_id, quote.last)
@@ -284,6 +300,7 @@ async def run_short_term_once(
                 unrealized_return=unrealized_return,
                 min_edge_bps=min_edge_bps,
                 round_trip_cost_bps=round_trip_cost_bps,
+                min_setup_score=min_setup_score,
             )
             executed, trade, approved, risk_reason = _execute(
                 store,
@@ -292,18 +309,23 @@ async def run_short_term_once(
                 decision=decision,
                 price=quote.last,
                 dry_run=dry_run,
+                strategy_version=strategy_version,
             )
             signal = "BUY" if executed == "BUY" else "SELL" if executed == "SELL" else "HOLD"
-            shadow_policies = build_shadow_policies(
-                decision,
-                entry_context=not long_open,
-                official_threshold_bps=min_edge_bps,
-                round_trip_cost_bps=round_trip_cost_bps,
+            shadow_policies = (
+                build_shadow_policies(
+                    decision,
+                    entry_context=not long_open,
+                    official_threshold_bps=min_edge_bps,
+                    round_trip_cost_bps=round_trip_cost_bps,
+                )
+                if not exploration
+                else []
             )
             edge_gap_bps = float(decision.edge_proxy_bps) - min_edge_bps
             reason = (
-                f"15m {spec.display_name}; {decision.reason} "
-                f"edge_gap={edge_gap_bps:+.1f}bps; round_trip_cost={round_trip_cost_bps:.1f}bps; "
+                f"15m {spec.display_name}; policy={policy_mode}; family={family}; setup_floor={min_setup_score:.1%}; "
+                f"{decision.reason} edge_gap={edge_gap_bps:+.1f}bps; round_trip_cost={round_trip_cost_bps:.1f}bps; "
                 f"RiskManager={risk_reason}"
             )
             if not dry_run:
@@ -314,35 +336,36 @@ async def run_short_term_once(
                     confidence=decision.confidence,
                     approved=approved,
                     reason=reason,
-                    strategy_version="short-term-v1",
+                    strategy_version=strategy_version,
                     market_price=quote.last,
                 )
 
-            diagnostic_payload = {
-                "decision_key": decision_key(spec.model_id, features.timestamp),
-                "recorded_at": datetime.now(UTC).isoformat(),
-                "model_id": spec.model_id,
-                "display_name": spec.display_name,
-                "feature_timestamp": features.timestamp,
-                "feature_time_utc": datetime.fromtimestamp(features.timestamp / 1000.0, UTC).isoformat(),
-                "signal_close": float(signal_close),
-                "market_price": float(quote.last),
-                "signal_execution_drift_bps": signal_execution_drift_bps,
-                "decision_action": decision.action,
-                "signal": signal,
-                "executed_action": executed,
-                "approved": approved,
-                "confidence": decision.confidence,
-                "confirmation_score": decision.confirmation_score,
-                "setup_ready": decision.setup_ready,
-                "microstructure_ready": decision.microstructure_ready,
-                "edge_proxy_bps": decision.edge_proxy_bps,
-                "official_threshold_bps": min_edge_bps,
-                "edge_gap_bps": edge_gap_bps,
-                "round_trip_cost_bps": round_trip_cost_bps,
-                "long_open_at_decision": long_open,
-                "shadow_policies": shadow_policies,
-            }
+            if not exploration:
+                diagnostic_payload = {
+                    "decision_key": decision_key(spec.model_id, features.timestamp),
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                    "model_id": spec.model_id,
+                    "display_name": spec.display_name,
+                    "feature_timestamp": features.timestamp,
+                    "feature_time_utc": datetime.fromtimestamp(features.timestamp / 1000.0, UTC).isoformat(),
+                    "signal_close": float(signal_close),
+                    "market_price": float(quote.last),
+                    "signal_execution_drift_bps": signal_execution_drift_bps,
+                    "decision_action": decision.action,
+                    "signal": signal,
+                    "executed_action": executed,
+                    "approved": approved,
+                    "confidence": decision.confidence,
+                    "confirmation_score": decision.confirmation_score,
+                    "setup_ready": decision.setup_ready,
+                    "microstructure_ready": decision.microstructure_ready,
+                    "edge_proxy_bps": decision.edge_proxy_bps,
+                    "official_threshold_bps": min_edge_bps,
+                    "edge_gap_bps": edge_gap_bps,
+                    "round_trip_cost_bps": round_trip_cost_bps,
+                    "long_open_at_decision": long_open,
+                    "shadow_policies": shadow_policies,
+                }
 
             result = {
                 "status": "ok",
@@ -362,6 +385,9 @@ async def run_short_term_once(
                 "executed_action": executed,
                 "approved": approved,
                 "trade": trade,
+                "policy_mode": policy_mode,
+                "strategy_family": family,
+                "setup_floor": min_setup_score,
                 "round_trip_cost_bps": round_trip_cost_bps,
                 "min_edge_bps": min_edge_bps,
                 "edge_gap_bps": edge_gap_bps,
@@ -371,7 +397,7 @@ async def run_short_term_once(
             }
         except Exception as exc:
             # Per-model isolation boundary: one paper ledger/order failure must
-            # never prevent the other benchmark from producing its decision.
+            # never prevent another benchmark/exploration ledger from producing its decision.
             result = {
                 "status": "error",
                 "recorded_at": datetime.now(UTC).isoformat(),
@@ -383,6 +409,8 @@ async def run_short_term_once(
                 "market_price": str(quote.last),
                 "signal_execution_drift_bps": signal_execution_drift_bps,
                 "feature_age_seconds": feature_age_seconds,
+                "policy_mode": policy_mode,
+                "setup_floor": min_setup_score,
                 "round_trip_cost_bps": round_trip_cost_bps,
                 "min_edge_bps": min_edge_bps,
                 "dry_run": dry_run,
