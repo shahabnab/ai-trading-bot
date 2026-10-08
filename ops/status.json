@@ -17,7 +17,7 @@
       "standardizer_exists": true
     }
   },
-  "generated_at": "2026-10-08T06:15:21.618359+00:00",
+  "generated_at": "2026-10-08T07:15:41.212802+00:00",
   "git": {
     "branch": "step-6-short-term-trading",
     "head": "05c1815c8a482f8188a96c24cf9aa459816a141b",
@@ -44,42 +44,42 @@
     },
     {
       "code": "stale_strategy_state",
-      "message": "v3-25bps-fullcontext-12h state is 11715.4 minutes old (limit 100m)",
+      "message": "v3-25bps-fullcontext-12h state is 11775.7 minutes old (limit 100m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "v3-50bps-technical-3h state is 11715.4 minutes old (limit 100m)",
+      "message": "v3-50bps-technical-3h state is 11775.7 minutes old (limit 100m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "trader-brain-v1 state is 4875.4 minutes old (limit 100m)",
+      "message": "trader-brain-v1 state is 4935.7 minutes old (limit 100m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "trader-brain-bandit-v1 state is 4875.4 minutes old (limit 100m)",
+      "message": "trader-brain-bandit-v1 state is 4935.7 minutes old (limit 100m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "short-momentum-15m state is 11670.4 minutes old (limit 40m)",
+      "message": "short-momentum-15m state is 11730.7 minutes old (limit 40m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "short-mean-reversion-15m state is 11670.4 minutes old (limit 40m)",
+      "message": "short-mean-reversion-15m state is 11730.7 minutes old (limit 40m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "short-momentum-explore-15m state is 11670.4 minutes old (limit 40m)",
+      "message": "short-momentum-explore-15m state is 11730.7 minutes old (limit 40m)",
       "severity": "critical"
     },
     {
       "code": "stale_strategy_state",
-      "message": "short-mean-reversion-explore-15m state is 11670.4 minutes old (limit 40m)",
+      "message": "short-mean-reversion-explore-15m state is 11730.7 minutes old (limit 40m)",
       "severity": "critical"
     },
     {
@@ -445,8 +445,8 @@
   "services": {
     "ai-trading-all-forward.service": {
       "ActiveState": "failed",
-      "ExecMainExitTimestamp": "Thu 2026-10-08 06:05:38 UTC",
-      "ExecMainStartTimestamp": "Thu 2026-10-08 06:05:22 UTC",
+      "ExecMainExitTimestamp": "Thu 2026-10-08 07:05:36 UTC",
+      "ExecMainStartTimestamp": "Thu 2026-10-08 07:05:20 UTC",
       "ExecMainStatus": "2",
       "Id": "ai-trading-all-forward.service",
       "LoadState": "loaded",
@@ -459,7 +459,7 @@
       "ActiveState": "active",
       "Id": "ai-trading-all-forward.timer",
       "LoadState": "loaded",
-      "NextElapseUSecRealtime": "Thu 2026-10-08 07:05:18 UTC",
+      "NextElapseUSecRealtime": "Thu 2026-10-08 08:05:16 UTC",
       "Result": "success",
       "SubState": "waiting",
       "query_rc": 0,
@@ -513,8 +513,8 @@
     },
     "ai-trading-shortterm.service": {
       "ActiveState": "failed",
-      "ExecMainExitTimestamp": "Thu 2026-10-08 06:02:07 UTC",
-      "ExecMainStartTimestamp": "Thu 2026-10-08 06:02:06 UTC",
+      "ExecMainExitTimestamp": "Thu 2026-10-08 07:02:05 UTC",
+      "ExecMainStartTimestamp": "Thu 2026-10-08 07:02:04 UTC",
       "ExecMainStatus": "1",
       "Id": "ai-trading-shortterm.service",
       "LoadState": "loaded",
@@ -527,7 +527,7 @@
       "ActiveState": "active",
       "Id": "ai-trading-shortterm.timer",
       "LoadState": "loaded",
-      "NextElapseUSecRealtime": "Thu 2026-10-08 06:17:03 UTC",
+      "NextElapseUSecRealtime": "Thu 2026-10-08 07:17:09 UTC",
       "Result": "success",
       "SubState": "waiting",
       "query_rc": 0,
@@ -536,7 +536,7 @@
   },
   "strategies": {
     "short-mean-reversion-15m": {
-      "age_minutes": 11670.360305983333,
+      "age_minutes": 11730.686880033334,
       "confidence": 0.43124999999999997,
       "display_name": "Intraday Mean Reversion 15m",
       "driver": "short_term",
@@ -550,7 +550,7 @@
       "trade": null
     },
     "short-mean-reversion-explore-15m": {
-      "age_minutes": 11670.360305983333,
+      "age_minutes": 11730.686880033334,
       "confidence": 0.43124999999999997,
       "display_name": "Mean Reversion Explore 15m",
       "driver": "short_term",
@@ -564,7 +564,7 @@
       "trade": null
     },
     "short-momentum-15m": {
-      "age_minutes": 11670.360305983333,
+      "age_minutes": 11730.686880033334,
       "confidence": 0.48,
       "display_name": "Intraday Momentum 15m",
       "driver": "short_term",
@@ -578,7 +578,7 @@
       "trade": null
     },
     "short-momentum-explore-15m": {
-      "age_minutes": 11670.360305983333,
+      "age_minutes": 11730.686880033334,
       "confidence": 0.48,
       "display_name": "Momentum Explore 15m",
       "driver": "short_term",
@@ -592,7 +592,7 @@
       "trade": null
     },
     "trader-brain-bandit-v1": {
-      "age_minutes": 4875.360305983334,
+      "age_minutes": 4935.686880033333,
       "decision_ev": -0.0024996752558696313,
       "display_name": "Trader Brain + RL",
       "driver": "trader_brain_rl",
@@ -616,7 +616,7 @@
       "trade": null
     },
     "trader-brain-v1": {
-      "age_minutes": 4875.360305983334,
+      "age_minutes": 4935.686880033333,
       "decision_ev": -0.0024996752558696313,
       "display_name": "Trader Brain V1",
       "driver": "trader_brain",
@@ -640,7 +640,7 @@
       "trade": null
     },
     "v3-25bps-fullcontext-12h": {
-      "age_minutes": 11715.360305983333,
+      "age_minutes": 11775.686880033334,
       "decision_ev": null,
       "display_name": "V3 12h Economic",
       "driver": "frozen_v3",
@@ -651,7 +651,7 @@
       "trade": null
     },
     "v3-50bps-technical-3h": {
-      "age_minutes": 11715.360305983333,
+      "age_minutes": 11775.686880033334,
       "decision_ev": -0.005635655362273258,
       "display_name": "V3 3h Signal Control",
       "driver": "frozen_v3",
@@ -665,19 +665,19 @@
   "system": {
     "cpu_count": 4,
     "disk": {
-      "free_bytes": 65678004224,
-      "free_fraction": 0.8181168953223462,
+      "free_bytes": 65862127616,
+      "free_fraction": 0.820410425090783,
       "total_bytes": 80279486464,
-      "used_bytes": 11303223296
+      "used_bytes": 11119099904
     },
     "load_average": {
-      "15m": 0.09228515625,
-      "1m": 0.14306640625,
-      "5m": 0.12109375
+      "15m": 0.08203125,
+      "1m": 0.03564453125,
+      "5m": 0.06103515625
     },
     "memory": {
-      "available_bytes": 7063068672,
-      "available_fraction": 0.8695872745638025,
+      "available_bytes": 7086862336,
+      "available_fraction": 0.8725166907128582,
       "total_bytes": 8122322944
     }
   }
