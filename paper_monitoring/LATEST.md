@@ -1,6 +1,6 @@
 # Six-hour AI trading audit snapshot
 
-Generated: `2026-10-13T14:05:23.786785+00:00`  
+Generated: `2026-10-13T20:05:15.418064+00:00`  
 Runtime commit: `05c1815c8a482f8188a96c24cf9aa459816a141b`  
 Real-order execution: **DISABLED**
 
@@ -23,14 +23,14 @@ Real-order execution: **DISABLED**
 
 - **CRITICAL** `MARKET_TRUTH_MISSING` — Real CoinEx candle truth could not be exported.
 - **CRITICAL** `OPS_CRITICAL` — The server ops supervisor reports a critical/unhealthy state.
-- **WARNING** `DECISION_STALE` — V3 12h Economic has not recorded a decision for 326.0h.
-- **WARNING** `DECISION_STALE` — V3 3h Signal Control has not recorded a decision for 323.0h.
-- **WARNING** `DECISION_STALE` — Trader Brain V1 has not recorded a decision for 208.0h.
-- **WARNING** `DECISION_STALE` — Trader Brain + RL has not recorded a decision for 208.0h.
-- **WARNING** `DECISION_STALE` — Intraday Momentum 15m has not recorded a decision for 322.1h.
-- **WARNING** `DECISION_STALE` — Intraday Mean Reversion 15m has not recorded a decision for 322.1h.
-- **WARNING** `DECISION_STALE` — Momentum Explore 15m has not recorded a decision for 322.1h.
-- **WARNING** `DECISION_STALE` — Mean Reversion Explore 15m has not recorded a decision for 322.1h.
+- **WARNING** `DECISION_STALE` — V3 12h Economic has not recorded a decision for 332.0h.
+- **WARNING** `DECISION_STALE` — V3 3h Signal Control has not recorded a decision for 329.0h.
+- **WARNING** `DECISION_STALE` — Trader Brain V1 has not recorded a decision for 214.0h.
+- **WARNING** `DECISION_STALE` — Trader Brain + RL has not recorded a decision for 214.0h.
+- **WARNING** `DECISION_STALE` — Intraday Momentum 15m has not recorded a decision for 328.1h.
+- **WARNING** `DECISION_STALE` — Intraday Mean Reversion 15m has not recorded a decision for 328.1h.
+- **WARNING** `DECISION_STALE` — Momentum Explore 15m has not recorded a decision for 328.1h.
+- **WARNING** `DECISION_STALE` — Mean Reversion Explore 15m has not recorded a decision for 328.1h.
 
 ## Evidence included
 
