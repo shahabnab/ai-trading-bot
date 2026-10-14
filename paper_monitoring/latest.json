@@ -8384,7 +8384,7 @@
       }
     }
   },
-  "generated_at_utc": "2026-10-14T14:05:23.701612+00:00",
+  "generated_at_utc": "2026-10-14T20:05:08.219942+00:00",
   "market_truth": {
     "available": false,
     "reason": "No 15-minute CoinEx candles returned."
@@ -8419,7 +8419,7 @@
           "standardizer_exists": true
         }
       },
-      "generated_at": "2026-10-14T13:15:08.130213+00:00",
+      "generated_at": "2026-10-14T19:15:03.825863+00:00",
       "git": {
         "branch": "step-6-short-term-trading",
         "head": "05c1815c8a482f8188a96c24cf9aa459816a141b",
@@ -8446,42 +8446,42 @@
         },
         {
           "code": "stale_strategy_state",
-          "message": "v3-25bps-fullcontext-12h state is 20775.1 minutes old (limit 100m)",
+          "message": "v3-25bps-fullcontext-12h state is 21135.1 minutes old (limit 100m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "v3-50bps-technical-3h state is 20775.1 minutes old (limit 100m)",
+          "message": "v3-50bps-technical-3h state is 21135.1 minutes old (limit 100m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "trader-brain-v1 state is 13935.1 minutes old (limit 100m)",
+          "message": "trader-brain-v1 state is 14295.1 minutes old (limit 100m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "trader-brain-bandit-v1 state is 13935.1 minutes old (limit 100m)",
+          "message": "trader-brain-bandit-v1 state is 14295.1 minutes old (limit 100m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "short-momentum-15m state is 20730.1 minutes old (limit 40m)",
+          "message": "short-momentum-15m state is 21090.1 minutes old (limit 40m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "short-mean-reversion-15m state is 20730.1 minutes old (limit 40m)",
+          "message": "short-mean-reversion-15m state is 21090.1 minutes old (limit 40m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "short-momentum-explore-15m state is 20730.1 minutes old (limit 40m)",
+          "message": "short-momentum-explore-15m state is 21090.1 minutes old (limit 40m)",
           "severity": "critical"
         },
         {
           "code": "stale_strategy_state",
-          "message": "short-mean-reversion-explore-15m state is 20730.1 minutes old (limit 40m)",
+          "message": "short-mean-reversion-explore-15m state is 21090.1 minutes old (limit 40m)",
           "severity": "critical"
         },
         {
@@ -8847,8 +8847,8 @@
       "services": {
         "ai-trading-all-forward.service": {
           "ActiveState": "failed",
-          "ExecMainExitTimestamp": "Wed 2026-10-14 13:05:46 UTC",
-          "ExecMainStartTimestamp": "Wed 2026-10-14 13:05:17 UTC",
+          "ExecMainExitTimestamp": "Wed 2026-10-14 19:05:25 UTC",
+          "ExecMainStartTimestamp": "Wed 2026-10-14 19:05:13 UTC",
           "ExecMainStatus": "2",
           "Id": "ai-trading-all-forward.service",
           "LoadState": "loaded",
@@ -8861,7 +8861,7 @@
           "ActiveState": "active",
           "Id": "ai-trading-all-forward.timer",
           "LoadState": "loaded",
-          "NextElapseUSecRealtime": "Wed 2026-10-14 14:05:06 UTC",
+          "NextElapseUSecRealtime": "Wed 2026-10-14 20:05:09 UTC",
           "Result": "success",
           "SubState": "waiting",
           "query_rc": 0,
@@ -8915,8 +8915,8 @@
         },
         "ai-trading-shortterm.service": {
           "ActiveState": "failed",
-          "ExecMainExitTimestamp": "Wed 2026-10-14 13:02:11 UTC",
-          "ExecMainStartTimestamp": "Wed 2026-10-14 13:02:10 UTC",
+          "ExecMainExitTimestamp": "Wed 2026-10-14 19:02:13 UTC",
+          "ExecMainStartTimestamp": "Wed 2026-10-14 19:02:12 UTC",
           "ExecMainStatus": "1",
           "Id": "ai-trading-shortterm.service",
           "LoadState": "loaded",
@@ -8929,7 +8929,7 @@
           "ActiveState": "active",
           "Id": "ai-trading-shortterm.timer",
           "LoadState": "loaded",
-          "NextElapseUSecRealtime": "Wed 2026-10-14 13:17:01 UTC",
+          "NextElapseUSecRealtime": "Wed 2026-10-14 19:17:06 UTC",
           "Result": "success",
           "SubState": "waiting",
           "query_rc": 0,
@@ -8938,7 +8938,7 @@
       },
       "strategies": {
         "short-mean-reversion-15m": {
-          "age_minutes": 20730.135503550002,
+          "age_minutes": 21090.063764383332,
           "confidence": 0.43124999999999997,
           "display_name": "Intraday Mean Reversion 15m",
           "driver": "short_term",
@@ -8952,7 +8952,7 @@
           "trade": null
         },
         "short-mean-reversion-explore-15m": {
-          "age_minutes": 20730.135503550002,
+          "age_minutes": 21090.063764383332,
           "confidence": 0.43124999999999997,
           "display_name": "Mean Reversion Explore 15m",
           "driver": "short_term",
@@ -8966,7 +8966,7 @@
           "trade": null
         },
         "short-momentum-15m": {
-          "age_minutes": 20730.135503550002,
+          "age_minutes": 21090.063764383332,
           "confidence": 0.48,
           "display_name": "Intraday Momentum 15m",
           "driver": "short_term",
@@ -8980,7 +8980,7 @@
           "trade": null
         },
         "short-momentum-explore-15m": {
-          "age_minutes": 20730.135503550002,
+          "age_minutes": 21090.063764383332,
           "confidence": 0.48,
           "display_name": "Momentum Explore 15m",
           "driver": "short_term",
@@ -8994,7 +8994,7 @@
           "trade": null
         },
         "trader-brain-bandit-v1": {
-          "age_minutes": 13935.13550355,
+          "age_minutes": 14295.063764383334,
           "decision_ev": -0.0024996752558696313,
           "display_name": "Trader Brain + RL",
           "driver": "trader_brain_rl",
@@ -9018,7 +9018,7 @@
           "trade": null
         },
         "trader-brain-v1": {
-          "age_minutes": 13935.13550355,
+          "age_minutes": 14295.063764383334,
           "decision_ev": -0.0024996752558696313,
           "display_name": "Trader Brain V1",
           "driver": "trader_brain",
@@ -9042,7 +9042,7 @@
           "trade": null
         },
         "v3-25bps-fullcontext-12h": {
-          "age_minutes": 20775.135503550002,
+          "age_minutes": 21135.063764383332,
           "decision_ev": null,
           "display_name": "V3 12h Economic",
           "driver": "frozen_v3",
@@ -9053,7 +9053,7 @@
           "trade": null
         },
         "v3-50bps-technical-3h": {
-          "age_minutes": 20775.135503550002,
+          "age_minutes": 21135.063764383332,
           "decision_ev": -0.005635655362273258,
           "display_name": "V3 3h Signal Control",
           "driver": "frozen_v3",
@@ -9067,19 +9067,19 @@
       "system": {
         "cpu_count": 4,
         "disk": {
-          "free_bytes": 65686687744,
-          "free_fraction": 0.8182250614352908,
+          "free_bytes": 65675436032,
+          "free_fraction": 0.8180849046842253,
           "total_bytes": 80279486464,
-          "used_bytes": 11294539776
+          "used_bytes": 11305791488
         },
         "load_average": {
-          "15m": 0.08984375,
-          "1m": 0.1015625,
-          "5m": 0.11669921875
+          "15m": 0.09814453125,
+          "1m": 0.16552734375,
+          "5m": 0.14697265625
         },
         "memory": {
-          "available_bytes": 7063707648,
-          "available_fraction": 0.8696659436840043,
+          "available_bytes": 7063523328,
+          "available_fraction": 0.8696432506685614,
           "total_bytes": 8122322944
         }
       }
@@ -9099,42 +9099,42 @@
     },
     {
       "code": "DECISION_STALE",
-      "message": "V3 12h Economic has not recorded a decision for 350.0h.",
+      "message": "V3 12h Economic has not recorded a decision for 356.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "V3 3h Signal Control has not recorded a decision for 347.0h.",
+      "message": "V3 3h Signal Control has not recorded a decision for 353.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "Trader Brain V1 has not recorded a decision for 232.0h.",
+      "message": "Trader Brain V1 has not recorded a decision for 238.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "Trader Brain + RL has not recorded a decision for 232.0h.",
+      "message": "Trader Brain + RL has not recorded a decision for 238.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "Intraday Momentum 15m has not recorded a decision for 346.1h.",
+      "message": "Intraday Momentum 15m has not recorded a decision for 352.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "Intraday Mean Reversion 15m has not recorded a decision for 346.1h.",
+      "message": "Intraday Mean Reversion 15m has not recorded a decision for 352.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "Momentum Explore 15m has not recorded a decision for 346.1h.",
+      "message": "Momentum Explore 15m has not recorded a decision for 352.0h.",
       "severity": "warning"
     },
     {
       "code": "DECISION_STALE",
-      "message": "Mean Reversion Explore 15m has not recorded a decision for 346.1h.",
+      "message": "Mean Reversion Explore 15m has not recorded a decision for 352.0h.",
       "severity": "warning"
     }
   ]
